@@ -1,0 +1,26 @@
+body {
+  background: #111;
+  color: #eee;
+  margin: 3rem;
+}
+
+textarea {
+  display: block;
+  box-sizing: border-box;
+  padding: 1rem;
+  width: fit-content;
+  margin-inline: auto;
+  border: .25rem solid;
+  border-radius: 1rem;
+  background: #222;
+  color: #eee;
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  textarea {
+    background: #222;
+    border-color: #444;
+  }
+}
