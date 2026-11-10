@@ -24,3 +24,20 @@ textarea {
     border-color: #444;
   }
 }
+
+.center {
+  text-align: center;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.7rem 1.2rem;
+  background: #333;
+  color: #eee;
+  text-decoration: none;
+  border-radius: 6px;
+}
+
+.button:hover {
+  background: #555;
+}
