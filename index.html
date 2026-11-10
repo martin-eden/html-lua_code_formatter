@@ -7,14 +7,16 @@
     <link href = 'style.css' rel = stylesheet />
   </head>
   <body>
-    <textarea id = 'input' class = 'code-input' cols = 75 rows = 30></textarea>
+    <textarea id = 'input' class = 'code-input' cols = 75 rows = 30>
+      do local t={{},{}}end
+    </textarea>
     <script src = 'fengari-web.js'></script>
     <script src = 'reformat.lua' type = 'application/lua'></script>
     <script src = 'add_reformat_function.lua' type = 'application/lua'></script>
     <script src = 'add_reformat_activator.lua' type = 'application/lua'></script>
     <div class = center>
       <div class = button>
-        <button class = button onclick = 'reformat()'>
+        <button class = button onclick = 'reformat()' title = 'Ctrl+Enter does the same'>
           Format
         </button>
       </div>
