@@ -1,4 +1,4 @@
-package.preload['reformat_lua'] =
+package.preload['reformat'] =
   function(...)
     require('workshop.base')
     return request('!.lua.reformat_code')
@@ -22,21 +22,21 @@ package.preload['workshop.base'] =
       local empty = ''
       local stack_get
       do
-        local Names
+        local names
         local depth
         stack_init =
           function()
-            Names = { }
+            names = { }
             depth = 1
           end
         stack_get =
           function()
-            return Names[depth]
+            return names[depth]
           end
         stack_add =
           function(prefix, name)
             depth = depth + 1
-            Names[depth] = { prefix = prefix, name = name }
+            names[depth] = { prefix = prefix, name = name }
           end
         stack_remove =
           function()
@@ -45,11 +45,11 @@ package.preload['workshop.base'] =
       end
       local get_caller_prefix =
         function()
-          local NameRec = stack_get()
-          if not NameRec then
+          local name_rec = stack_get()
+          if not name_rec then
             return empty
           end
-          return NameRec.prefix
+          return name_rec.prefix
         end
       do
         local prefix_name_capture = '^(.+%.)([^%.]+)$'
@@ -114,169 +114,287 @@ package.preload['workshop.base'] =
         function(qualified_name)
           local require_name = get_require_name(qualified_name)
           stack_add(split_name(require_name))
-          local Results = tbl_pack(require(require_name))
+          local results = tbl_pack(require(require_name))
           stack_remove()
-          return tbl_unpack(Results)
+          return tbl_unpack(results)
         end
     end
     do
       local our_require_name = (...)
       set_base_prefix(split_name(our_require_name))
-      _G.request = request
-      _G.get_base_prefix = get_base_prefix
+      _G['request'] = request
+      _G['get_base_prefix'] = get_base_prefix
       stack_init()
       stack_add(empty, our_require_name)
       request('!.system.install_is_functions')()
       request('!.system.install_assert_functions')()
-      _G.new = request('!.table.new')
+      _G['new'] = request('!.table.new')
       stack_remove()
     end
   end
-package.preload['workshop.concepts.Indent'] =
+package.preload['workshop.concepts.indent'] =
   function(...)
-    local get_indent_chunk =
-      function(Me)
-        return Me[1]
-      end
-    local set_indent_chunk =
-      function(Me, str)
-        Me[1] = str
-      end
     local get_indent_level =
-      function(Me)
-        return Me[2]:GetValue()
+      function(me)
+        return me[2]:get_value()
       end
     local set_indent_level =
-      function(Me, level)
-        Me[2]:SetValue(level)
-      end
-    local get_max_indent_level =
-      function(Me)
-        return Me[2]:GetMaxValue()
-      end
-    local set_max_indent_level =
-      function(Me, level)
-        Me[2]:SetMaxValue(level)
+      function(me, level)
+        me[2]:set_value(level)
       end
     local to_string
     do
       local str_rep = string.rep
       to_string =
-        function(Me)
-          return str_rep(Me[1], Me[2]:GetValue())
+        function(me)
+          return str_rep(me[1], me[2]:get_value())
         end
     end
     local inc =
-      function(Me)
-        set_indent_level(Me, get_indent_level(Me) + 1)
+      function(me)
+        set_indent_level(me, get_indent_level(me) + 1)
       end
     local dec =
-      function(Me)
-        set_indent_level(Me, get_indent_level(Me) - 1)
+      function(me)
+        set_indent_level(me, get_indent_level(me) - 1)
       end
-    local Interface
+    local interface
     local create
     do
-      local RangePointClass = request('!.concepts.RangePoint')
-      local min_indent = 0
-      local max_indent = 60
-      local indent_chunk = '  '
+      local range_point_class = request('!.concepts.range_point')
       local attach_methods = request('!.table.attach_methods')
       create =
-        function()
-          local RangePoint = RangePointClass.create()
-          RangePoint:SetMinValue(min_indent)
-          RangePoint:SetMaxValue(max_indent)
-          RangePoint:SetValue(min_indent)
-          local Core = { indent_chunk, RangePoint }
-          attach_methods(Core, Interface)
-          return Core
+        function(indent_chunk, min_indent, max_indent)
+          local range_point =
+            range_point_class.create(min_indent, max_indent)
+          local me = { indent_chunk, range_point }
+          attach_methods(me, interface)
+          return me
         end
     end
-    Interface =
+    interface =
       {
         create = create,
-        GetIndentChunk = get_indent_chunk,
-        SetIndentChunk = set_indent_chunk,
-        GetIndentLevel = get_indent_level,
-        SetIndentLevel = set_indent_level,
-        GetMaxIndentLevel = get_max_indent_level,
-        SetMaxIndentLevel = set_max_indent_level,
-        ToString = to_string,
-        Inc = inc,
-        Dec = dec,
+        get_indent_level = get_indent_level,
+        set_indent_level = set_indent_level,
+        to_string = to_string,
+        inc = inc,
+        dec = dec,
       }
-    return Interface
+    return interface
   end
-package.preload['workshop.concepts.RangePoint'] =
+package.preload['workshop.concepts.range_point'] =
   function(...)
     local get_min_value =
-      function(Me)
-        return Me[2]
-      end
-    local set_min_value =
-      function(Me, val)
-        Me[2] = val
+      function(me)
+        return me[1]
       end
     local get_max_value =
-      function(Me)
-        return Me[3]
-      end
-    local set_max_value =
-      function(Me, val)
-        Me[3] = val
+      function(me)
+        return me[2]
       end
     local get_value
     local set_value
     do
-      local min = math.min
-      local max = math.max
+      local constrain = request('!.number.constrain')
       get_value =
-        function(Me)
-          return min(max(Me[1], Me[2]), Me[3])
+        function(me)
+          return constrain(me[3], me[1], me[2])
         end
       set_value =
-        function(Me, value)
-          Me[1] = min(max(value, Me[2]), Me[3])
+        function(me, value)
+          me[3] = constrain(value, me[1], me[2])
         end
     end
-    local Interface
+    local interface
     local create
     do
       local attach_methods = request('!.table.attach_methods')
       create =
-        function()
-          local Core = { 0, 0, 1 }
-          attach_methods(Core, Interface)
-          return Core
+        function(min_value, max_value)
+          local me = { min_value, max_value, min_value }
+          attach_methods(me, interface)
+          return me
         end
     end
-    Interface =
+    interface =
       {
         create = create,
-        GetMinValue = get_min_value,
-        SetMinValue = set_min_value,
-        GetMaxValue = get_max_value,
-        SetMaxValue = set_max_value,
-        GetValue = get_value,
-        SetValue = set_value,
+        get_min_value = get_min_value,
+        get_max_value = get_max_value,
+        get_value = get_value,
+        set_value = set_value,
       }
-    return Interface
+    return interface
   end
-package.preload['workshop.concepts.Ascii.Chars'] =
+package.preload['workshop.concepts.text_block'] =
   function(...)
-    local Chars
+    local flush
     do
-      local Codes = request('Codes')
-      local str_char = string.char
-      Chars = { }
-      for name, code in pairs(Codes) do
-        Chars[name] = str_char(code)
-      end
+      local trim = request('!.string.trim_tail')
+      local add_to_list = request('!.concepts.list.add_item')
+      flush =
+        function(me)
+          add_to_list(me[6], trim(me[1]))
+          for _ = 2, me[2] do
+            add_to_list(me[6], '')
+          end
+          me[2] = 0
+          me[1] = ''
+        end
     end
-    return Chars
+    local add_to_textline
+    do
+      local utf8_len = utf8.len
+      local str_len = string.len
+      local max = math.max
+      add_to_textline =
+        function(me, str)
+          if (me[1] == '') then
+            me[1] = me[3]:to_string()
+          end
+          me[1] = me[1] .. str
+          local len = utf8_len(me[1]) or str_len(me[1])
+          me[4] = max(me[4], len)
+        end
+    end
+    local add_to_curline =
+      function(me, str)
+        if (str == '') then
+          return
+        end
+        if (me[2] > 0) then
+          flush(me)
+        end
+        add_to_textline(me, str)
+      end
+    local newline =
+      function(me)
+        me[2] = me[2] + 1
+      end
+    local on_clean_line =
+      function(me)
+        return (me[1] == '') or (me[2] > 0)
+      end
+    local request_clean_line =
+      function(me)
+        if not on_clean_line(me) then
+          newline(me)
+        end
+      end
+    local request_empty_line =
+      function(me)
+        request_clean_line(me)
+        if (me[2] == 1) then
+          newline(me)
+        end
+      end
+    local inc_indent =
+      function(me)
+        me[3]:inc()
+      end
+    local dec_indent =
+      function(me)
+        me[3]:dec()
+      end
+    local get_text
+    do
+      local lines_to_str = request('!.convert.lines_to_str')
+      get_text =
+        function(me)
+          flush(me)
+          return lines_to_str(me[6])
+        end
+    end
+    local exceeds_margin =
+      function(me)
+        return (me[4] > me[5])
+      end
+    local seed
+    do
+      local utf8_len = utf8.len
+      seed =
+        function(me)
+          local another_me =
+            {
+              [1] = me[1],
+              [2] = me[2],
+              [3] = new(me[3]),
+              [4] = 0,
+              [5] = me[5],
+              [6] = { },
+            }
+          setmetatable(another_me, getmetatable(me))
+          return another_me
+        end
+    end
+    local graft
+    do
+      local add_list = request('!.concepts.list.add_list')
+      local max = math.max
+      graft =
+        function(me, another_me)
+          me[1] = another_me[1]
+          me[2] = another_me[2]
+          me[4] = max(me[4], another_me[4])
+          add_list(me[6], another_me[6])
+        end
+    end
+    local interface
+    local create
+    do
+      local indent = request('!.concepts.indent')
+      local min_indent = 0
+      local max_indent = 100
+      local attach_methods = request('!.table.attach_methods')
+      create =
+        function(indent_chunk, margin)
+          assert_string(indent_chunk)
+          assert_number(margin)
+          local indent =
+            indent.create(indent_chunk, min_indent, max_indent)
+          local me =
+            {
+              [1] = '',
+              [2] = 0,
+              [3] = indent,
+              [4] = 0,
+              [5] = margin,
+              [6] = { },
+            }
+          attach_methods(me, interface)
+          return me
+        end
+    end
+    interface =
+      {
+        create = create,
+        add_to_textline = add_to_textline,
+        add_to_curline = add_to_curline,
+        newline = newline,
+        on_clean_line = on_clean_line,
+        request_clean_line = request_clean_line,
+        request_empty_line = request_empty_line,
+        inc_indent = inc_indent,
+        dec_indent = dec_indent,
+        get_text = get_text,
+        exceeds_margin = exceeds_margin,
+        seed = seed,
+        graft = graft,
+      }
+    return interface
   end
-package.preload['workshop.concepts.Ascii.Codes'] =
+package.preload['workshop.concepts.ascii.chars'] =
+  function(...)
+    local codes = request('codes')
+    local str_char = string.char
+    chars = { }
+    for name, code in pairs(codes) do
+      chars[name] = str_char(code)
+    end
+    return chars
+  end
+package.preload['workshop.concepts.ascii.codes'] =
   function(...)
     return
       {
@@ -351,7 +469,7 @@ package.preload['workshop.concepts.list.to_string'] =
         return tbl_concat(List, separator_str)
       end
   end
-package.preload['workshop.concepts.lua.Keywords'] =
+package.preload['workshop.concepts.lua.keywords'] =
   function(...)
     return
       {
@@ -380,134 +498,24 @@ package.preload['workshop.concepts.lua.Keywords'] =
         'return',
       }
   end
-package.preload['workshop.concepts.lua.NumberTypeNames'] =
+package.preload['workshop.concepts.lua.keywords_map'] =
+  function(...)
+    local keywords = request('keywords')
+    local map_values = request('!.table.map_values')
+    return map_values(keywords)
+  end
+package.preload['workshop.concepts.lua.number_type_names'] =
   function(...)
     return { 'integer', 'float' }
   end
-package.preload['workshop.concepts.lua.TokensAccessor'] =
-  function(...)
-    local match_string =
-      function(Me, str)
-        if (Me[2] > Me[3]) then
-          return false
-        end
-        if (Me[1][Me[2]][1] ~= str) then
-          return false
-        end
-        Me[2] = Me[2] + 1
-        return true
-      end
-    local get_position =
-      function(Me)
-        return Me[2]
-      end
-    local set_position =
-      function(Me, position)
-        Me[2] = position
-      end
-    local get_segment =
-      function(Me, start, len)
-        if (len ~= 1) then
-          return
-        end
-        if (start > Me[3]) then
-          return
-        end
-        return Me[1][start][1]
-      end
-    local read_type =
-      function(Me, type)
-        if (Me[2] > Me[3]) then
-          return false
-        end
-        if (Me[1][Me[2]].type ~= type) then
-          return false
-        end
-        Me[2] = Me[2] + 1
-        return true
-      end
-    local is_name =
-      function(Me)
-        return read_type(Me, 'name')
-      end
-    local is_string =
-      function(Me)
-        return read_type(Me, 'string')
-      end
-    local is_number =
-      function(Me)
-        return read_type(Me, 'number')
-      end
-    local Interface
-    local create
-    do
-      local attach_methods = request('!.table.attach_methods')
-      create =
-        function(TokensList)
-          local Me = { TokensList, 1, #TokensList }
-          attach_methods(Me, Interface)
-          return Me
-        end
-    end
-    Interface =
-      {
-        create = create,
-        match_string = match_string,
-        get_position = get_position,
-        set_position = set_position,
-        get_segment = get_segment,
-        IsName = is_name,
-        IsString = is_string,
-        IsNumber = is_number,
-      }
-    return Interface
-  end
-package.preload['workshop.concepts.lua.TokensSyntax'] =
-  function(...)
-    local Delim = request('TokensSyntax.Delim')
-    local String = request('TokensSyntax.String')
-    local Number = request('TokensSyntax.Number')
-    local Name = request('TokensSyntax.Name')
-    local Syntel = request('TokensSyntax.Syntel')
-    local handy = request('!.mechs.processor.handy')
-    local opt_rep = handy.opt_rep
-    local cho = handy.cho
-    return
-      {
-        Delim,
-        opt_rep(
-          cho(
-            { name = 'string', String },
-            { name = 'number', Number },
-            { name = 'name', Name },
-            { name = 'syntel', Syntel }
-          ),
-          Delim
-        ),
-      }
-  end
-package.preload['workshop.concepts.lua.TypeNames'] =
-  function(...)
-    return
-      {
-        'nil',
-        'boolean',
-        'number',
-        'string',
-        'function',
-        'thread',
-        'userdata',
-        'table',
-      }
-  end
 package.preload['workshop.concepts.lua.run_formatter'] =
   function(...)
-    local FormatterClass = request('Formatter.Interface')
+    local formatter_class = request('formatter.interface')
     return
-      function(Ast, Options)
-        local Formatter = FormatterClass.create(Options)
-        Formatter:ProcessNode(Ast)
-        return Formatter[2]:GetText()
+      function(ast, options)
+        local formatter = formatter_class.create(options)
+        formatter:process_node(ast)
+        return formatter[1]:get_text()
       end
   end
 package.preload['workshop.concepts.lua.syntax'] =
@@ -523,259 +531,826 @@ package.preload['workshop.concepts.lua.syntax'] =
     optimize(statements)
     return statements
   end
+package.preload['workshop.concepts.lua.tokens_accessor'] =
+  function(...)
+    local match_string =
+      function(me, str)
+        if (me[2] > me[3]) then
+          return false
+        end
+        if (me[1][me[2]][1] ~= str) then
+          return false
+        end
+        me[2] = me[2] + 1
+        return true
+      end
+    local get_position =
+      function(me)
+        return me[2]
+      end
+    local set_position =
+      function(me, position)
+        me[2] = position
+      end
+    local get_segment =
+      function(me, start, len)
+        if (len ~= 1) then
+          return
+        end
+        if (start > me[3]) then
+          return
+        end
+        return me[1][start][1]
+      end
+    local read_type =
+      function(me, type)
+        if (me[2] > me[3]) then
+          return false
+        end
+        if (me[1][me[2]].type ~= type) then
+          return false
+        end
+        me[2] = me[2] + 1
+        return true
+      end
+    local is_name =
+      function(me)
+        return read_type(me, 'name')
+      end
+    local is_string =
+      function(me)
+        return read_type(me, 'string')
+      end
+    local is_number =
+      function(me)
+        return read_type(me, 'number')
+      end
+    local interface
+    local create
+    do
+      local attach_methods = request('!.table.attach_methods')
+      create =
+        function(tokens)
+          local me = { tokens, 1, #tokens }
+          attach_methods(me, interface)
+          return me
+        end
+    end
+    interface =
+      {
+        create = create,
+        match_string = match_string,
+        get_position = get_position,
+        set_position = set_position,
+        get_segment = get_segment,
+        is_name = is_name,
+        is_string = is_string,
+        is_number = is_number,
+      }
+    return interface
+  end
+package.preload['workshop.concepts.lua.tokens_syntax'] =
+  function(...)
+    local delim = request('tokens_syntax.delim')
+    local string = request('tokens_syntax.string')
+    local number = request('tokens_syntax.number')
+    local name = request('tokens_syntax.name')
+    local syntel = request('tokens_syntax.syntel')
+    local handy = request('!.mechs.processor.handy')
+    local opt_rep = handy.opt_rep
+    local cho = handy.cho
+    return
+      {
+        delim,
+        opt_rep(
+          cho(
+            { name = 'string', string },
+            { name = 'number', number },
+            { name = 'name', name },
+            { name = 'syntel', syntel }
+          ),
+          delim
+        ),
+      }
+  end
 package.preload['workshop.concepts.lua.transform_ast'] =
   function(...)
     local align_nodes = request('ast_transformer.align_nodes')
     local restruc_nodes = request('ast_transformer.restruc_nodes')
-    local Handlers = request('ast_transformer.Handlers.Interface')
+    local handlers = request('ast_transformer.handlers.interface')
     return
-      function(SyntaxTree)
-        for subnode_index in ipairs(SyntaxTree) do
-          align_nodes(SyntaxTree, subnode_index)
+      function(syntax_tree)
+        for subnode_index in ipairs(syntax_tree) do
+          align_nodes(syntax_tree, subnode_index)
         end
-        restruc_nodes(SyntaxTree, Handlers)
-        return SyntaxTree
+        restruc_nodes(syntax_tree, handlers)
+        return syntax_tree
       end
   end
-package.preload['workshop.concepts.lua.Formatter.Interface'] =
+package.preload['workshop.concepts.lua.type_names'] =
   function(...)
-    local Interface
+    return
+      {
+        'nil',
+        'boolean',
+        'number',
+        'string',
+        'function',
+        'thread',
+        'userdata',
+        'table',
+      }
+  end
+package.preload['workshop.concepts.lua.ast_transformer.align_nodes'] =
+  function(...)
+    local align_nodes
+    align_nodes =
+      function(parent, index)
+        local node = parent[index]
+        if not is_table(node) then
+          return
+        end
+        for subnode_index in ipairs(node) do
+          align_nodes(node, subnode_index)
+        end
+        if (#node == 1) and is_string(node[1]) then
+          node.value = node[1]
+          node[1] = nil
+        end
+        if (node.type == 'assign_or_call') then
+          if (node[1].type == 'function_call') then
+            node = node[1]
+          else
+            node.type = 'assignment'
+          end
+        elseif (node.type == 'var_or_call') then
+          if (node[#node].type == 'func_args') then
+            node.type = 'function_call'
+          else
+            node.type = 'var_ref'
+          end
+        elseif (node.type == 'local_statement') then
+          if (node[1].type == 'named_function') then
+            node[1].type = 'local_named_function'
+          else
+            node[1].type = 'local_assignment'
+          end
+          node = node[1]
+        end
+        parent[index] = node
+      end
+    return align_nodes
+  end
+package.preload['workshop.concepts.lua.ast_transformer.restruc_nodes'] =
+  function(...)
+    return
+      function(node, handlers)
+        local restruc_nodes
+        restruc_nodes =
+          function(node)
+            for _, subnode in ipairs(node) do
+              restruc_nodes(subnode)
+            end
+            local handler = handlers[node.type]
+            if handler then
+              handler(node)
+            end
+          end
+        restruc_nodes(node)
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.assignment'
+] =
+  function(...)
+    local add_to_list = request('!.concepts.list.add_item')
+    local replace = request('!.table.replace')
+    return
+      function(node)
+        local dest_list = { type = 'ref_list' }
+        for i = 1, (#node - 1) do
+          add_to_list(dest_list, node[i])
+        end
+        local result =
+          {
+            type = 'assignment',
+            dest_list = dest_list,
+            val_list = node[#node],
+          }
+        replace(node, result)
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.attr_name_list'
+] =
+  function(...)
+    local tbl_remove = table.remove
+    return
+      function(node)
+        if (node[1].type == 'attribute') then
+          node.list_attr = node[1]
+          tbl_remove(node, 1)
+        end
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.else_part'
+] =
+  function(...)
+    return
+      function(node)
+        node.body = node[1]
+        node[1] = nil
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.elseif_part'
+] =
+  function(...)
+    return
+      function(node)
+        node.condition = node[1]
+        node[1] = nil
+        node.body = node[2]
+        node[2] = nil
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.expression'
+] =
+  function(...)
+    local replace = request('!.table.replace')
+    local add_to_list = request('!.concepts.list.add_item')
+    return
+      function(node)
+        local result = { }
+        local i = 1
+        local num_items = #node
+        local term = { }
+        if (node[i].type == 'un_op') then
+          local un_ops = { }
+          while (node[i].type == 'un_op') and (i <= num_items) do
+            add_to_list(un_ops, node[i].value)
+            i = i + 1
+          end
+          term.un_ops = un_ops
+        end
+        term.operand = node[i]
+        node[i] = nil
+        i = i + 1
+        if (i < num_items) and (node[i].type == 'bin_op') then
+          term.bin_op = node[i].value
+          i = i + 1
+        end
+        add_to_list(result, term)
+        if (i == num_items) then
+          local last_node = node[i]
+          if (last_node.type == 'expression') then
+            for _, last_node_item in ipairs(last_node) do
+              add_to_list(result, last_node_item)
+            end
+          end
+        end
+        result.type = node.type
+        replace(node, result)
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.function_call'
+] =
+  function(...)
+    local add_to_list = request('!.concepts.list.add_item')
+    local replace = request('!.table.replace')
+    return
+      function(node)
+        local result
+        local name_part
+        local seek_pos = 0
+        while true do
+          if (seek_pos < #node) then
+            name_part = { result }
+            seek_pos = seek_pos + 1
+          else
+            break
+          end
+          name_part.type = 'name_parts'
+          while (node[seek_pos].type ~= 'func_args') do
+            add_to_list(name_part, node[seek_pos])
+            seek_pos = seek_pos + 1
+          end
+          result =
+            {
+              type = 'function_call',
+              name_part = name_part,
+              args = node[seek_pos],
+            }
+        end
+        replace(node, result)
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.function_params'
+] =
+  function(...)
+    local add_to_list = request('!.concepts.list.add_item')
+    local replace = request('!.table.replace')
+    return
+      function(node)
+        local result = { type = node.type }
+        if node[1] then
+          if (node[1].type == 'name_list') then
+            for _, name_rec in ipairs(node[1]) do
+              add_to_list(result, name_rec)
+            end
+          else
+            add_to_list(result, node[1])
+          end
+        end
+        if node[2] then
+          add_to_list(result, node[2])
+        end
+        result = new(result)
+        replace(node, result)
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.generic_for_block'
+] =
+  function(...)
+    return
+      function(node)
+        node.names = node[1]
+        node[1] = nil
+        node.expr_list = node[2]
+        node[2] = nil
+        node.body = node[3]
+        node[3] = nil
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.if_block'
+] =
+  function(...)
+    return
+      function(node)
+        node.if_part = node[1]
+        node[1] = nil
+        local seek_pos = 2
+        local elseif_parts = { }
+        while node[seek_pos] and (node[seek_pos].type == 'elseif_part') do
+          elseif_parts[#elseif_parts + 1] = node[seek_pos]
+          node[seek_pos] = nil
+          seek_pos = seek_pos + 1
+        end
+        if next(elseif_parts) then
+          node.elseif_parts = elseif_parts
+        end
+        if node[seek_pos] and (node[seek_pos].type == 'else_part') then
+          node.else_part = node[seek_pos]
+          node[seek_pos] = nil
+          seek_pos = seek_pos + 1
+        end
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.if_part'
+] =
+  function(...)
+    return
+      function(node)
+        node.condition = node[1]
+        node[1] = nil
+        node.body = node[2]
+        node[2] = nil
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.interface'
+] =
+  function(...)
+    return
+      {
+        ['attr_name_list'] = request('attr_name_list'),
+        ['assignment'] = request('assignment'),
+        ['else_part'] = request('else_part'),
+        ['elseif_part'] = request('elseif_part'),
+        ['expression'] = request('expression'),
+        ['function_call'] = request('function_call'),
+        ['function_params'] = request('function_params'),
+        ['generic_for_block'] = request('generic_for_block'),
+        ['if_block'] = request('if_block'),
+        ['if_part'] = request('if_part'),
+        ['key_val'] = request('key_val'),
+        ['local_assignment'] = request('local_assignment'),
+        ['local_named_function'] = request('local_named_function'),
+        ['named_function'] = request('named_function'),
+        ['numeric_for_block'] = request('numeric_for_block'),
+        ['repeat_block'] = request('repeat_block'),
+        ['type_function'] = request('type_function'),
+        ['var_ref'] = request('var_ref'),
+        ['while_block'] = request('while_block'),
+      }
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.key_val'
+] =
+  function(...)
+    return
+      function(node)
+        if (#node == 2) then
+          node.key = node[1]
+          node.value = node[2]
+          node[2] = nil
+        else
+          node.value = node[1]
+        end
+        node[1] = nil
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.local_assignment'
+] =
+  function(...)
+    return
+      function(node)
+        node.name_list = node[1]
+        node[1] = nil
+        node.val_list = node[2]
+        node[2] = nil
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.local_named_function'
+] =
+  function(...)
+    return
+      function(node)
+        node.dotted_name = node[1]
+        node[1] = nil
+        node.params = node[2]
+        node[2] = nil
+        node.body = node[3]
+        node[3] = nil
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.named_function'
+] =
+  function(...)
+    return
+      function(node)
+        node.dotted_name = node[1]
+        node[1] = nil
+        local seek_pos = 2
+        if (node[seek_pos].type == 'colon_name') then
+          node.colon_name = node[seek_pos]
+          node[seek_pos] = nil
+          seek_pos = seek_pos + 1
+        end
+        node.params = node[seek_pos]
+        node[seek_pos] = nil
+        seek_pos = seek_pos + 1
+        node.body = node[seek_pos]
+        node[seek_pos] = nil
+        seek_pos = seek_pos + 1
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.numeric_for_block'
+] =
+  function(...)
+    return
+      function(node)
+        node.index = node[1]
+        node[1] = nil
+        node.start_val = node[2]
+        node[2] = nil
+        node.end_val = node[3]
+        node[3] = nil
+        local seek_pos = 4
+        if (node[seek_pos].type == 'expression') then
+          node.increment = node[seek_pos]
+          node[seek_pos] = nil
+          seek_pos = seek_pos + 1
+        end
+        node.body = node[seek_pos]
+        node[seek_pos] = nil
+        seek_pos = seek_pos + 1
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.repeat_block'
+] =
+  function(...)
+    return
+      function(node)
+        node.body = node[1]
+        node[1] = nil
+        node.condition = node[2]
+        node[2] = nil
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.type_function'
+] =
+  function(...)
+    return
+      function(node)
+        node.params = node[1]
+        node[1] = nil
+        node.body = node[2]
+        node[2] = nil
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.var_ref'
+] =
+  function(...)
+    local add_to_list = request('!.concepts.list.add_item')
+    local replace = request('!.table.replace')
+    return
+      function(node)
+        local result
+        local name_part
+        local seek_pos = 0
+        while true do
+          if (seek_pos < #node) then
+            name_part = { result }
+            seek_pos = seek_pos + 1
+          else
+            break
+          end
+          while
+            (seek_pos <= #node) and
+            (node[seek_pos].type ~= 'func_args') do
+            add_to_list(name_part, node[seek_pos])
+            seek_pos = seek_pos + 1
+          end
+          name_part.type = 'name_parts'
+          local args
+          if node[seek_pos] then
+            args = node[seek_pos]
+          end
+          result = { name_part = name_part, args = args }
+          if args then
+            result.type = 'function_call'
+          else
+            result.type = 'var_ref'
+          end
+        end
+        replace(node, result)
+      end
+  end
+package.preload[
+  'workshop.concepts.lua.ast_transformer.handlers.while_block'
+] =
+  function(...)
+    return
+      function(node)
+        node.condition = node[1]
+        node[1] = nil
+        node.body = node[2]
+        node[2] = nil
+      end
+  end
+package.preload['workshop.concepts.lua.formatter.interface'] =
+  function(...)
+    local interface
     local create
     do
       local default_right_margin = 72
       local default_indent_chunk = '  '
-      local TextBlock = request('!.mechs.TextBlock')
-      local StateKeeperClass = request('StateKeeper')
+      local text_block = request('!.concepts.text_block')
+      local state_keeper_class = request('state_keeper')
       local attach_methods = request('!.table.attach_methods')
       create =
-        function(Options)
-          local Options = Options or { }
-          local right_margin =
-            Options.right_margin or default_right_margin
-          local Printer
+        function(options)
+          local options = options or { }
+          local printer
           do
             local indent_chunk =
-              Options.indent_chunk or default_indent_chunk
-            Printer = TextBlock.create(indent_chunk)
+              options.indent_chunk or default_indent_chunk
+            local right_margin =
+              options.right_margin or default_right_margin
+            printer = text_block.create(indent_chunk, right_margin)
           end
-          local StateKeeper = StateKeeperClass.create()
-          local Me = { right_margin, Printer, StateKeeper }
-          attach_methods(Me, Interface)
-          return Me
+          local state_keeper = state_keeper_class.create()
+          local me = { printer, state_keeper }
+          attach_methods(me, interface)
+          return me
         end
     end
-    Interface =
+    interface =
       {
         create = create,
-        Handlers = request('Handlers.Interface'),
-        ProcessList = request('process_list'),
-        ProcessNode = request('process_node'),
-        ProcessBlock_Oneline = request('process_block_oneline'),
-        ProcessBlock_Multiline = request('process_block_multiline'),
-        ProcessBlock = request('process_block'),
-        Represent = request('represent'),
-        Variate = request('variate'),
-        ProcessList_Variative = request('process_list_variative'),
+        handlers = request('handlers.interface'),
+        process_list = request('process_list'),
+        process_node = request('process_node'),
+        process_block_oneline = request('process_block_oneline'),
+        process_block_multiline = request('process_block_multiline'),
+        process_block = request('process_block'),
+        represent = request('represent'),
+        variate = request('variate'),
+        process_list_variative = request('process_list_variative'),
       }
-    return Interface
+    return interface
   end
-package.preload['workshop.concepts.lua.Formatter.StateKeeper'] =
-  function(...)
-    local next_level =
-      function(Me)
-        Me[1] = Me[1] + 1
-      end
-    local prev_level =
-      function(Me)
-        Me[1] = Me[1] - 1
-      end
-    local get_state =
-      function(Me)
-        return Me[2][Me[1]]
-      end
-    local set_next_state =
-      function(Me, State)
-        Me[2][Me[1] + 1] = State
-      end
-    local Interface
-    local create
-    do
-      local attach_methods = request('!.table.attach_methods')
-      create =
-        function()
-          local Me = { 0, { } }
-          attach_methods(Me, Interface)
-          return Me
-        end
-    end
-    Interface =
-      {
-        create = create,
-        NextLevel = next_level,
-        PrevLevel = prev_level,
-        GetState = get_state,
-        SetNextState = set_next_state,
-      }
-    return Interface
-  end
-package.preload['workshop.concepts.lua.Formatter.process_block'] =
+package.preload['workshop.concepts.lua.formatter.process_block'] =
   function(...)
     return
-      function(Me, Node, handler)
-        local Printer = Me[2]
+      function(me, node, handler)
         local result
-        Printer:IncIndent()
+        me[1]:inc_indent()
         if handler then
-          result = handler(Me, Node)
+          result = handler(me, node)
         else
-          result = Me:ProcessNode(Node)
+          result = me:process_node(node)
         end
-        Printer:DecIndent()
+        me[1]:dec_indent()
         return result
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.process_block_multiline'
+  'workshop.concepts.lua.formatter.process_block_multiline'
 ] =
   function(...)
     return
-      function(Me, prefix, Node, postfix, opt_handler)
-        local Printer = Me[2]
+      function(me, prefix, node, postfix, opt_handler)
+        local printer = me[1]
         if prefix then
-          Printer:AddToCurline(prefix)
+          printer:add_to_curline(prefix)
         end
-        Printer:RequestCleanLine()
-        local result = Me:ProcessBlock(Node, opt_handler)
-        Printer:RequestCleanLine()
+        printer:request_clean_line()
+        local result = me:process_block(node, opt_handler)
+        printer:request_clean_line()
         if postfix then
-          Printer:AddToCurline(postfix)
+          printer:add_to_curline(postfix)
         end
         return result
       end
   end
-package.preload['workshop.concepts.lua.Formatter.process_block_oneline'] =
+package.preload['workshop.concepts.lua.formatter.process_block_oneline'] =
   function(...)
     return
-      function(Me, prefix, Node, postfix, opt_handler)
-        local Printer = Me[2]
+      function(me, prefix, node, postfix, opt_handler)
+        local printer = me[1]
         if prefix then
-          Printer:AddToCurline(prefix)
+          printer:add_to_curline(prefix)
         end
-        local result = Me:ProcessBlock(Node, opt_handler)
+        local result = me:process_block(node, opt_handler)
         if postfix then
-          Printer:AddToCurline(postfix)
+          printer:add_to_curline(postfix)
         end
         return result
       end
   end
-package.preload['workshop.concepts.lua.Formatter.process_list'] =
+package.preload['workshop.concepts.lua.formatter.process_list'] =
   function(...)
     local apply_delimiter =
-      function(Me, delimiter)
+      function(me, delimiter)
         if delimiter then
           if is_function(delimiter) then
-            delimiter(Me)
+            delimiter(me)
           else
-            Me[2]:AddToCurline(delimiter)
+            me[1]:add_to_curline(delimiter)
           end
         end
       end
     return
-      function(Me, Node, delimiter, apply_tail_delimiter)
-        if (#Node > 0) then
-          for i = 1, (#Node - 1) do
-            if not Me:ProcessNode(Node[i]) then
+      function(me, node, delimiter, apply_tail_delimiter)
+        if (#node > 0) then
+          for i = 1, (#node - 1) do
+            if not me:process_node(node[i]) then
               return
             end
-            apply_delimiter(Me, delimiter)
+            apply_delimiter(me, delimiter)
           end
-          if not Me:ProcessNode(Node[#Node]) then
+          if not me:process_node(node[#node]) then
             return
           end
           if apply_tail_delimiter then
-            apply_delimiter(Me, delimiter)
+            apply_delimiter(me, delimiter)
           end
         end
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.process_list_variative'
+  'workshop.concepts.lua.formatter.process_list_variative'
 ] =
   function(...)
     return
       function(
-        Me,
-        Node,
+        me,
+        node,
         oneline_delimiter,
         multiline_delimiter,
         apply_tail_delimiter
       )
-        if (#Node == 0) then
+        if (#node == 0) then
           return
         end
         local oneliner =
-          function(Me, Node)
+          function(me, node)
             return
-              Me:ProcessList(
-                Node, oneline_delimiter, apply_tail_delimiter
+              me:process_list(
+                node, oneline_delimiter, apply_tail_delimiter
               )
           end
         local multiliner =
-          function(Me, Node)
+          function(me, node)
             return
-              Me:ProcessList(
-                Node, multiline_delimiter, apply_tail_delimiter
+              me:process_list(
+                node, multiline_delimiter, apply_tail_delimiter
               )
           end
-        return Me:Variate(Node, oneliner, multiliner)
+        return me:variate(node, oneliner, multiliner)
       end
   end
-package.preload['workshop.concepts.lua.Formatter.process_node'] =
+package.preload['workshop.concepts.lua.formatter.process_node'] =
   function(...)
     return
-      function(Me, Node)
-        if not Node then
+      function(me, node)
+        if not node then
           return true
         end
-        local node_type = Node.type
+        local node_type = node.type
         if not node_type then
           return true
         end
-        local handler = Me.Handlers[node_type]
+        local handler = me.handlers[node_type]
         if is_function(handler) then
-          return handler(Me, Node)
+          return handler(me, node)
         else
-          local node_value = Node.value
-          Me[2]:AddToCurline(node_value)
+          local node_value = node.value
+          me[1]:add_to_curline(node_value)
           return true
         end
       end
   end
-package.preload['workshop.concepts.lua.Formatter.represent'] =
+package.preload['workshop.concepts.lua.formatter.represent'] =
   function(...)
     return
-      function(Me, represent, Node)
-        local OriginalPrinter = Me[2]
-        local TrialPrinter = OriginalPrinter:Seed()
-        Me[2] = TrialPrinter
-        local has_failed = not represent(Me, Node)
-        Me[2] = OriginalPrinter
-        return TrialPrinter, has_failed
+      function(me, represent, node)
+        local original_printer = me[1]
+        local trial_printer = original_printer:seed()
+        me[1] = trial_printer
+        local has_failed = not represent(me, node)
+        me[1] = original_printer
+        return trial_printer, has_failed
       end
   end
-package.preload['workshop.concepts.lua.Formatter.variate'] =
+package.preload['workshop.concepts.lua.formatter.state_keeper'] =
   function(...)
-    local DefaultState =
+    local next_level =
+      function(me)
+        me[1] = me[1] + 1
+      end
+    local prev_level =
+      function(me)
+        me[1] = me[1] - 1
+      end
+    local get_state =
+      function(me)
+        return me[2][me[1]]
+      end
+    local set_next_state =
+      function(me, State)
+        me[2][me[1] + 1] = State
+      end
+    local interface
+    local create
+    do
+      local attach_methods = request('!.table.attach_methods')
+      create =
+        function()
+          local me = { 0, { } }
+          attach_methods(me, interface)
+          return me
+        end
+    end
+    interface =
+      {
+        create = create,
+        next_level = next_level,
+        prev_level = prev_level,
+        get_state = get_state,
+        set_next_state = set_next_state,
+      }
+    return interface
+  end
+package.preload['workshop.concepts.lua.formatter.variate'] =
+  function(...)
+    local default_state =
       { is_multiline_allowed = true, is_last_hope = true }
     return
-      function(Me, Node, oneliner, multiliner)
-        local Printer = Me[2]
-        local StateKeeper = Me[3]
-        StateKeeper:NextLevel()
-        local OurState = StateKeeper:GetState() or DefaultState
-        local is_multiline_allowed = OurState.is_multiline_allowed
-        local is_last_hope = OurState.is_last_hope
+      function(me, node, oneliner, multiliner)
+        local printer = me[1]
+        local state_keeper = me[2]
+        state_keeper:next_level()
+        local our_state = state_keeper:get_state() or default_state
+        local is_multiline_allowed = our_state.is_multiline_allowed
+        local is_last_hope = our_state.is_last_hope
         local last_hope_handler
         if multiliner and is_multiline_allowed then
           last_hope_handler = multiliner
@@ -786,43 +1361,104 @@ package.preload['workshop.concepts.lua.Formatter.variate'] =
           function(representer, is_multiline)
             local representer_is_last_hope =
               is_last_hope and (representer == last_hope_handler)
-            StateKeeper:SetNextState(
+            state_keeper:set_next_state(
               {
                 is_multiline_allowed = is_multiline,
                 is_last_hope = representer_is_last_hope,
               }
             )
-            local TrialRepresentation, has_failed =
-              Me:Represent(representer, Node)
+            local trial, has_failed = me:represent(representer, node)
             if
               representer_is_last_hope or
-              (
-                not has_failed and
-                (TrialRepresentation:GetWidth() <= Me[1])
-              )
+              (not has_failed and not trial:exceeds_margin())
             then
-              return TrialRepresentation
+              return trial
             end
           end
-        local FinalRepresentation
+        local final
         if oneliner then
-          FinalRepresentation = do_represent(oneliner, false)
+          final = do_represent(oneliner, false)
         end
-        if
-          not FinalRepresentation and
-          multiliner and
-          is_multiline_allowed
-        then
-          FinalRepresentation = do_represent(multiliner, true)
+        if not final and multiliner and is_multiline_allowed then
+          final = do_represent(multiliner, true)
         end
-        if FinalRepresentation then
-          Printer:Graft(FinalRepresentation)
+        if final then
+          printer:graft(final)
         end
-        StateKeeper:PrevLevel()
-        return not is_nil(FinalRepresentation)
+        state_keeper:prev_level()
+        return not is_nil(final)
       end
   end
-package.preload['workshop.concepts.lua.Formatter.Handlers.Interface'] =
+package.preload['workshop.concepts.lua.formatter.handlers.expression'] =
+  function(...)
+    local represent_operand_oneline =
+      function(me, node)
+        local printer = me[1]
+        if node.un_ops then
+          local cur_un_op, prev_un_op
+          for _, cur_un_op in ipairs(node.un_ops) do
+            if (prev_un_op == '-') and (cur_un_op == '-') then
+              printer:add_to_curline(' -')
+            elseif (cur_un_op == 'not') then
+              printer:add_to_curline('not ')
+            else
+              printer:add_to_curline(cur_un_op)
+            end
+            prev_un_op = cur_un_op
+          end
+        end
+        if not me:process_node(node.operand) then
+          return
+        end
+        if node.bin_op then
+          printer:add_to_curline(' ' .. node.bin_op .. ' ')
+        end
+        return true
+      end
+    local oneliner =
+      function(me, node)
+        for _, Term in ipairs(node) do
+          if not represent_operand_oneline(me, Term) then
+            return
+          end
+        end
+        return true
+      end
+    local represent_operand_multiline
+    do
+      local line_wrap_op
+      do
+        local map_values = request('!.table.map_values')
+        line_wrap_op =
+          map_values({ 'and', 'or', '+', '-', '*', '/', '//', '..' })
+      end
+      represent_operand_multiline =
+        function(me, node)
+          if not represent_operand_oneline(me, node) then
+            return
+          end
+          if line_wrap_op[node.bin_op] then
+            me[1]:request_clean_line()
+          end
+          return true
+        end
+    end
+    local multiliner =
+      function(me, node)
+        me[1]:request_clean_line()
+        for _, term in ipairs(node) do
+          if not represent_operand_multiline(me, term) then
+            return
+          end
+        end
+        return true
+      end
+    return
+      function(me, node)
+        return me:variate(node, oneliner, multiliner)
+      end
+  end
+package.preload['workshop.concepts.lua.formatter.handlers.interface'] =
   function(...)
     return
       {
@@ -859,271 +1495,200 @@ package.preload['workshop.concepts.lua.Formatter.Handlers.Interface'] =
         ['dot_name'] = request('wrappers.dot_name'),
         ['dot_list'] = request('wrappers.dot_list'),
         ['expr_list'] = request('wrappers.expr_list'),
-        ['func_args'] = request('wrappers.func_args'),
+        ['func_args'] = request('wrappers.function_params'),
         ['function_params'] = request('wrappers.function_params'),
         ['global_all'] = request('wrappers.global_all'),
-        ['name_list'] = request('wrappers.name_list'),
+        ['name_list'] = request('wrappers.expr_list'),
         ['name_parts'] = request('wrappers.name_parts'),
         ['named_vararg'] = request('wrappers.named_vararg'),
         ['par_expr'] = request('wrappers.par_expr'),
-        ['ref_list'] = request('wrappers.ref_list'),
+        ['ref_list'] = request('wrappers.expr_list'),
       }
   end
-package.preload['workshop.concepts.lua.Formatter.Handlers.expression'] =
+package.preload['workshop.concepts.lua.formatter.handlers.statements'] =
   function(...)
-    local represent_operand_oneline =
-      function(Me, Node)
-        local Printer = Me[2]
-        if Node.un_ops then
-          local cur_un_op, prev_un_op
-          for _, cur_un_op in ipairs(Node.un_ops) do
-            if (prev_un_op == '-') and (cur_un_op == '-') then
-              Printer:AddToCurline(' -')
-            elseif (cur_un_op == 'not') then
-              Printer:AddToCurline('not ')
-            else
-              Printer:AddToCurline(cur_un_op)
-            end
-            prev_un_op = cur_un_op
-          end
-        end
-        if not Me:ProcessNode(Node.operand) then
-          return
-        end
-        if Node.bin_op then
-          Printer:AddToCurline(' ' .. Node.bin_op .. ' ')
-        end
-        return true
-      end
-    local oneliner =
-      function(Me, Node)
-        for _, Term in ipairs(Node) do
-          if not represent_operand_oneline(Me, Term) then
-            return
-          end
-        end
-        return true
-      end
-    local represent_operand_multiline
-    do
-      local LineWrapOps
-      do
-        local map_values = request('!.table.map_values')
-        LineWrapOps =
-          map_values({ 'and', 'or', '+', '-', '*', '/', '//', '..' })
-      end
-      represent_operand_multiline =
-        function(Me, Node)
-          if not represent_operand_oneline(Me, Node) then
-            return
-          end
-          if LineWrapOps[Node.bin_op] then
-            Me[2]:RequestCleanLine()
-          end
-          return true
-        end
-    end
     local multiliner =
-      function(Me, Node)
-        Me[2]:RequestCleanLine()
-        for _, Term in ipairs(Node) do
-          if not represent_operand_multiline(Me, Term) then
+      function(me, node)
+        for _, subnode in ipairs(node) do
+          if (subnode.type ~= 'empty_statement') then
+            me[1]:request_clean_line()
+          end
+          if not me:process_node(subnode) then
             return
           end
         end
         return true
       end
     return
-      function(Me, Node)
-        return Me:Variate(Node, oneliner, multiliner)
-      end
-  end
-package.preload['workshop.concepts.lua.Formatter.Handlers.statements'] =
-  function(...)
-    local multiliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        for _, Subnode in ipairs(Node) do
-          if (Subnode.type ~= 'empty_statement') then
-            Printer:RequestCleanLine()
-          end
-          if not Me:ProcessNode(Subnode) then
-            return
-          end
-        end
-        return true
-      end
-    return
-      function(Me, Node)
-        return Me:Variate(Node, nil, multiliner)
+      function(me, node)
+        return me:variate(node, nil, multiliner)
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.expressions.function_call'
+  'workshop.concepts.lua.formatter.handlers.expressions.function_call'
 ] =
   function(...)
     return
-      function(Me, Node)
+      function(me, node)
         return
-          Me:ProcessNode(Node.name_part) and Me:ProcessNode(Node.args)
+          me:process_node(node.name_part) and me:process_node(node.args)
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.expressions.string'
+  'workshop.concepts.lua.formatter.handlers.expressions.string'
 ] =
   function(...)
     local str_sub = string.sub
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        if not Printer:OnCleanLine() then
-          local text_line = Printer[1]
+      function(me, node)
+        local printer = me[1]
+        if not printer:on_clean_line() then
+          local text_line = printer[1]
           if
             (str_sub(text_line, -1) == '[') and
-            (str_sub(Node.value, 1, 1) == '[')
+            (str_sub(node.value, 1, 1) == '[')
           then
-            Printer:AddToCurline(' ')
+            printer:add_to_curline(' ')
           end
         end
-        Printer:AddToCurline(Node.value)
+        printer:add_to_curline(node.value)
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.expressions.table'
+  'workshop.concepts.lua.formatter.handlers.expressions.table'
 ] =
   function(...)
     local oneliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('{ ')
-        for idx, KeyVal in ipairs(Node) do
+      function(me, node)
+        local printer = me[1]
+        printer:add_to_curline('{ ')
+        for idx, key_val in ipairs(node) do
           if (idx > 1) then
-            Printer:AddToCurline(', ')
+            printer:add_to_curline(', ')
           end
-          local key = KeyVal.key
+          local key = key_val.key
           if key then
-            if not Me:ProcessNode(key) then
+            if not me:process_node(key) then
               return
             end
-            Printer:AddToCurline(' = ')
+            printer:add_to_curline(' = ')
           end
-          if not Me:ProcessNode(KeyVal.value) then
+          if not me:process_node(key_val.value) then
             return
           end
         end
-        Printer:AddToCurline(' }')
+        printer:add_to_curline(' }')
         return true
       end
     local multiliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:RequestCleanLine()
-        Printer:AddToCurline('{')
-        Printer:IncIndent()
-        for _, KeyVal in ipairs(Node) do
-          Printer:RequestCleanLine()
-          local key, value = KeyVal.key, KeyVal.value
+      function(me, node)
+        local printer = me[1]
+        printer:request_clean_line()
+        printer:add_to_curline('{')
+        printer:inc_indent()
+        for _, key_val in ipairs(node) do
+          printer:request_clean_line()
+          local key, value = key_val.key, key_val.value
           if key then
-            if not Me:ProcessNode(key) then
+            if not me:process_node(key) then
               return
             end
-            Printer:AddToCurline(' = ')
-            if not Me:ProcessBlock(value) then
+            printer:add_to_curline(' = ')
+            if not me:process_block(value) then
               return
             end
-            Printer:AddToTextline(',')
+            printer:add_to_textline(',')
           else
-            if not Me:ProcessNode(value) then
+            if not me:process_node(value) then
               return
             end
-            Printer:AddToTextline(',')
+            printer:add_to_textline(',')
           end
         end
-        Printer:DecIndent()
-        Printer:RequestCleanLine()
-        Printer:AddToCurline('}')
+        printer:dec_indent()
+        printer:request_clean_line()
+        printer:add_to_curline('}')
         return true
       end
     return
-      function(Me, Node)
-        if (#Node == 0) then
-          Me[2]:AddToCurline('{ }')
+      function(me, node)
+        if (#node == 0) then
+          me[1]:add_to_curline('{ }')
           return true
         else
-          return Me:Variate(Node, oneliner, multiliner)
+          return me:variate(node, oneliner, multiliner)
         end
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.expressions.type_function'
+  'workshop.concepts.lua.formatter.handlers.expressions.type_function'
 ] =
   function(...)
     local multiliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:RequestCleanLine()
-        Printer:AddToCurline('function')
-        if not Me:ProcessNode(Node.params) then
+      function(me, node)
+        me[1]:request_clean_line()
+        me[1]:add_to_curline('function')
+        if not me:process_node(node.params) then
           return
         end
-        Printer:RequestCleanLine()
-        return Me:ProcessBlock_Multiline(nil, Node.body, 'end')
+        me[1]:request_clean_line()
+        return me:process_block_multiline(nil, node.body, 'end')
       end
     return
-      function(Me, Node)
-        return Me:Variate(Node, nil, multiliner)
+      function(me, node)
+        return me:variate(node, nil, multiliner)
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.expressions.var_ref'
+  'workshop.concepts.lua.formatter.handlers.expressions.var_ref'
 ] =
   function(...)
     return
-      function(Me, Node)
-        return Me:ProcessNode(Node.name_part)
+      function(me, node)
+        return me:process_node(node.name_part)
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.assignment'
+  'workshop.concepts.lua.formatter.handlers.statements.assignment'
 ] =
   function(...)
     return
-      function(Me, Node)
-        if not Me:ProcessNode(Node.dest_list) then
+      function(me, node)
+        if not me:process_node(node.dest_list) then
           return
         end
-        if Node.val_list then
-          Me[2]:AddToTextline(' = ')
-          return Me:ProcessBlock(Node.val_list)
+        if node.val_list then
+          me[1]:add_to_textline(' = ')
+          return me:process_block(node.val_list)
         end
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.break_statement'
+  'workshop.concepts.lua.formatter.handlers.statements.break_statement'
 ] =
   function(...)
     return
-      function(Me)
-        Me[2]:AddToCurline('break')
+      function(me)
+        me[1]:add_to_curline('break')
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.global_statement'
+  'workshop.concepts.lua.formatter.handlers.statements.global_statement'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('global ')
-        if not Me:ProcessBlock(Node[1]) then
+      function(me, node)
+        local printer = me[1]
+        printer:add_to_curline('global ')
+        if not me:process_block(node[1]) then
           return
         end
-        if Node[2] then
-          Printer:AddToCurline(' = ')
-          if not Me:ProcessBlock(Node[2]) then
+        if node[2] then
+          printer:add_to_curline(' = ')
+          if not me:process_block(node[2]) then
             return
           end
         end
@@ -1131,1193 +1696,565 @@ package.preload[
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.goto_statement'
+  'workshop.concepts.lua.formatter.handlers.statements.goto_statement'
 ] =
   function(...)
     return
-      function(Me, Node)
-        Me[2]:AddToCurline('goto ')
-        return Me:ProcessNode(Node[1])
+      function(me, node)
+        me[1]:add_to_curline('goto ')
+        return me:process_node(node[1])
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.label_statement'
+  'workshop.concepts.lua.formatter.handlers.statements.label_statement'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('::')
-        if not Me:ProcessNode(Node[1]) then
+      function(me, node)
+        me[1]:add_to_curline('::')
+        if not me:process_node(node[1]) then
           return
         end
-        Printer:AddToCurline('::')
+        me[1]:add_to_curline('::')
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.local_assignment'
+  'workshop.concepts.lua.formatter.handlers.statements.local_assignment'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('local ')
-        if not Me:ProcessBlock(Node.name_list) then
+      function(me, node)
+        me[1]:add_to_curline('local ')
+        if not me:process_block(node.name_list) then
           return
         end
-        if Node.val_list then
-          Printer:AddToTextline(' = ')
-          return Me:ProcessBlock(Node.val_list)
+        if node.val_list then
+          me[1]:add_to_textline(' = ')
+          return me:process_block(node.val_list)
         end
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.return_statement'
+  'workshop.concepts.lua.formatter.handlers.statements.return_statement'
 ] =
   function(...)
     local oneliner =
-      function(Me, Node)
-        Me[2]:AddToCurline('return ')
-        return Me:ProcessNode(Node[1])
+      function(me, node)
+        me[1]:add_to_curline('return ')
+        return me:process_node(node[1])
       end
     local multiliner =
-      function(Me, Node)
-        return Me:ProcessBlock_Multiline('return', Node[1])
+      function(me, node)
+        return me:process_block_multiline('return', node[1])
       end
     return
-      function(Me, Node)
-        if not Node[1] then
-          Me[2]:AddToCurline('return')
+      function(me, node)
+        if not node[1] then
+          me[1]:add_to_curline('return')
           return true
         else
-          return Me:Variate(Node, oneliner, multiliner)
+          return me:variate(node, oneliner, multiliner)
         end
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.blocks.do_block'
+  'workshop.concepts.lua.formatter.handlers.statements.blocks.do_block'
 ] =
   function(...)
     return
-      function(Me, Node)
-        Me[2]:RequestCleanLine()
-        return Me:ProcessBlock_Multiline('do', Node[1], 'end')
+      function(me, node)
+        me[1]:request_clean_line()
+        return me:process_block_multiline('do', node[1], 'end')
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.blocks.generic_for_block'
+  'workshop.concepts.lua.formatter.handlers.statements.blocks.generic_for_block'
 ] =
   function(...)
     local header_oneline =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('for ')
-        if not Me:ProcessNode(Node.names) then
+      function(me, node)
+        me[1]:add_to_curline('for ')
+        if not me:process_node(node.names) then
           return
         end
-        Printer:AddToCurline(' in ')
-        if not Me:ProcessNode(Node.expr_list) then
+        me[1]:add_to_curline(' in ')
+        if not me:process_node(node.expr_list) then
           return
         end
-        Printer:AddToCurline(' do')
+        me[1]:add_to_curline(' do')
         return true
       end
     local in_part_oneline =
-      function(Me, Node)
-        Me[2]:AddToCurline(' in ')
-        return Me:ProcessNode(Node.expr_list)
+      function(me, node)
+        me[1]:add_to_curline(' in ')
+        return me:process_node(node.expr_list)
       end
     local in_part_multiline =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToTextline(' in')
-        Printer:RequestCleanLine()
-        return Me:ProcessBlock(Node.expr_list)
+      function(me, node)
+        me[1]:add_to_textline(' in')
+        me[1]:request_clean_line()
+        return me:process_block(node.expr_list)
       end
     local header_multiline =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('for')
-        Printer:RequestCleanLine()
-        Printer:IncIndent()
-        if not Me:ProcessNode(Node.names) then
+      function(me, node)
+        local printer = me[1]
+        printer:add_to_curline('for')
+        printer:request_clean_line()
+        printer:inc_indent()
+        if not me:process_node(node.names) then
           return
         end
-        if not Me:Variate(Node, in_part_oneline, in_part_multiline) then
+        if not me:variate(node, in_part_oneline, in_part_multiline) then
           return
         end
-        Printer:DecIndent()
-        Printer:RequestCleanLine()
-        Printer:AddToCurline('do')
+        printer:dec_indent()
+        printer:request_clean_line()
+        printer:add_to_curline('do')
         return true
       end
     local multiliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:RequestCleanLine()
-        if not Me:Variate(Node, header_oneline, header_multiline) then
+      function(me, node)
+        me[1]:request_clean_line()
+        if not me:variate(node, header_oneline, header_multiline) then
           return
         end
-        Printer:RequestCleanLine()
-        if not Me:ProcessBlock(Node.body) then
+        me[1]:request_clean_line()
+        if not me:process_block(node.body) then
           return
         end
-        Printer:RequestCleanLine()
-        Printer:AddToCurline('end')
+        me[1]:request_clean_line()
+        me[1]:add_to_curline('end')
         return true
       end
     return
-      function(Me, Node)
-        return Me:Variate(Node, nil, multiliner)
+      function(me, node)
+        return me:variate(node, nil, multiliner)
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.blocks.if_block'
+  'workshop.concepts.lua.formatter.handlers.statements.blocks.if_block'
 ] =
   function(...)
     local oneline_if =
-      function(Me, Node)
-        return Me:ProcessBlock_Oneline('if ', Node, ' then')
+      function(me, node)
+        return me:process_block_oneline('if ', node, ' then')
       end
     local multiline_if =
-      function(Me, Node)
-        return Me:ProcessBlock_Multiline('if', Node, 'then')
+      function(me, node)
+        return me:process_block_multiline('if', node, 'then')
       end
     local oneline_elseif =
-      function(Me, Node)
-        return Me:ProcessBlock_Oneline('elseif ', Node, ' then')
+      function(me, node)
+        return me:process_block_oneline('elseif ', node, ' then')
       end
     local multiline_elseif =
-      function(Me, Node)
-        return Me:ProcessBlock_Multiline('elseif', Node, 'then')
+      function(me, node)
+        return me:process_block_multiline('elseif', node, 'then')
       end
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:RequestCleanLine()
+      function(me, node)
+        local printer = me[1]
+        printer:request_clean_line()
         if
-          not Me:Variate(
-            Node.if_part.condition, oneline_if, multiline_if
+          not me:variate(
+            node.if_part.condition, oneline_if, multiline_if
           )
         then
           return
         end
-        Printer:RequestCleanLine()
-        if not Me:ProcessBlock(Node.if_part.body) then
+        printer:request_clean_line()
+        if not me:process_block(node.if_part.body) then
           return
         end
-        if Node.elseif_parts then
-          for _, ElseifPart in ipairs(Node.elseif_parts) do
-            Printer:RequestCleanLine()
+        if node.elseif_parts then
+          for _, elseif_part in ipairs(node.elseif_parts) do
+            printer:request_clean_line()
             if
-              not Me:Variate(
-                ElseifPart.condition, oneline_elseif, multiline_elseif
+              not me:variate(
+                elseif_part.condition, oneline_elseif, multiline_elseif
               )
             then
               return
             end
-            Printer:RequestCleanLine()
-            if not Me:ProcessBlock(ElseifPart.body) then
+            printer:request_clean_line()
+            if not me:process_block(elseif_part.body) then
               return
             end
           end
         end
-        if Node.else_part then
-          Printer:RequestCleanLine()
+        if node.else_part then
+          printer:request_clean_line()
           if
-            not Me:ProcessBlock_Multiline('else', Node.else_part.body)
+            not me:process_block_multiline('else', node.else_part.body)
           then
             return
           end
         end
-        Printer:RequestCleanLine()
-        Printer:AddToCurline('end')
+        printer:request_clean_line()
+        printer:add_to_curline('end')
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.blocks.local_named_function'
+  'workshop.concepts.lua.formatter.handlers.statements.blocks.local_named_function'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:RequestCleanLine()
-        Printer:AddToCurline('local function ')
-        if not Me:ProcessNode(Node.dotted_name) then
+      function(me, node)
+        local printer = me[1]
+        printer:request_clean_line()
+        printer:add_to_curline('local function ')
+        if not me:process_node(node.dotted_name) then
           return
         end
-        if not Me:ProcessNode(Node.params) then
+        if not me:process_node(node.params) then
           return
         end
-        Printer:RequestCleanLine()
-        if not Me:ProcessBlock_Multiline(nil, Node.body, 'end') then
+        printer:request_clean_line()
+        if not me:process_block_multiline(nil, node.body, 'end') then
           return
         end
-        Printer:RequestCleanLine()
+        printer:request_clean_line()
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.blocks.named_function'
+  'workshop.concepts.lua.formatter.handlers.statements.blocks.named_function'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:RequestCleanLine()
-        Printer:AddToCurline('function ')
-        if not Me:ProcessNode(Node.dotted_name) then
+      function(me, node)
+        local printer = me[1]
+        printer:request_clean_line()
+        printer:add_to_curline('function ')
+        if not me:process_node(node.dotted_name) then
           return
         end
-        if Node.colon_name then
-          if not Me:ProcessNode(Node.colon_name) then
+        if node.colon_name then
+          if not me:process_node(node.colon_name) then
             return
           end
         end
-        if not Me:ProcessNode(Node.params) then
+        if not me:process_node(node.params) then
           return
         end
-        Printer:RequestCleanLine()
-        if not Me:ProcessBlock_Multiline(nil, Node.body, 'end') then
+        printer:request_clean_line()
+        if not me:process_block_multiline(nil, node.body, 'end') then
           return
         end
-        Printer:RequestCleanLine()
+        printer:request_clean_line()
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.blocks.numeric_for_block'
+  'workshop.concepts.lua.formatter.handlers.statements.blocks.numeric_for_block'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('for ')
-        if not Me:ProcessNode(Node.index) then
+      function(me, node)
+        local printer = me[1]
+        printer:add_to_curline('for ')
+        if not me:process_node(node.index) then
           return
         end
-        Printer:AddToCurline(' = ')
-        if not Me:ProcessNode(Node.start_val) then
+        printer:add_to_curline(' = ')
+        if not me:process_node(node.start_val) then
           return
         end
-        Printer:AddToCurline(', ')
-        if not Me:ProcessNode(Node.end_val) then
+        printer:add_to_curline(', ')
+        if not me:process_node(node.end_val) then
           return
         end
-        if Node.increment then
-          Printer:AddToCurline(', ')
-          if not Me:ProcessNode(Node.increment) then
+        if node.increment then
+          printer:add_to_curline(', ')
+          if not me:process_node(node.increment) then
             return
           end
         end
-        Printer:AddToCurline(' ')
-        return Me:ProcessBlock_Multiline('do', Node.body, 'end')
+        printer:add_to_curline(' ')
+        return me:process_block_multiline('do', node.body, 'end')
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.blocks.repeat_block'
+  'workshop.concepts.lua.formatter.handlers.statements.blocks.repeat_block'
 ] =
   function(...)
-    local oneline_condition =
-      function(Me, Node)
-        return Me:ProcessBlock_Oneline(' ', Node)
+    local oneliner =
+      function(me, node)
+        return me:process_block_oneline(' ', node)
       end
-    local multiline_condition =
-      function(Me, Node)
-        return Me:ProcessBlock_Multiline(nil, Node)
+    local multiliner =
+      function(me, node)
+        return me:process_block_multiline(nil, node)
       end
     return
-      function(Me, Node)
+      function(me, node)
         if
-          not Me:ProcessBlock_Multiline('repeat', Node.body, 'until')
+          not me:process_block_multiline('repeat', node.body, 'until')
         then
           return
         end
-        if
-          not Me:Variate(
-            Node.condition, oneline_condition, multiline_condition
-          )
-        then
+        if not me:variate(node.condition, oneliner, multiliner) then
           return
         end
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.statements.blocks.while_block'
+  'workshop.concepts.lua.formatter.handlers.statements.blocks.while_block'
 ] =
   function(...)
     return
-      function(Me, Node)
+      function(me, node)
         return
-          Me:ProcessBlock_Oneline('while ', Node.condition, ' do') and
-          Me:ProcessBlock_Multiline(nil, Node.body, 'end')
+          me:process_block_oneline('while ', node.condition, ' do') and
+          me:process_block_multiline(nil, node.body, 'end')
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.attr_name'
+  'workshop.concepts.lua.formatter.handlers.wrappers.attr_name'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        Me:ProcessNode(Node[1])
-        if Node[2] then
-          Printer:AddToCurline(' ')
-          Me:ProcessNode(Node[2])
+      function(me, node)
+        me:process_node(node[1])
+        if node[2] then
+          me[2]:add_to_curline(' ')
+          me:process_node(node[2])
         end
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.attr_name_list'
+  'workshop.concepts.lua.formatter.handlers.wrappers.attr_name_list'
 ] =
   function(...)
     local process_expr_list = request('expr_list')
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        if Node.list_attr then
-          Me:ProcessNode(Node.list_attr)
-          Printer:AddToCurline(' ')
+      function(me, node)
+        if node.list_attr then
+          me:process_node(node.list_attr)
+          me[1]:add_to_curline(' ')
         end
-        return process_expr_list(Me, Node)
+        return process_expr_list(me, node)
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.attribute'
+  'workshop.concepts.lua.formatter.handlers.wrappers.attribute'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('<')
-        Me:ProcessNode(Node[1])
-        Printer:AddToCurline('>')
+      function(me, node)
+        me[1]:add_to_curline('<')
+        me:process_node(node[1])
+        me[1]:add_to_curline('>')
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.bracket_expr'
+  'workshop.concepts.lua.formatter.handlers.wrappers.bracket_expr'
 ] =
   function(...)
     local oneliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('[')
-        if not Me:ProcessNode(Node[1]) then
+      function(me, node)
+        me[1]:add_to_curline('[')
+        if not me:process_node(node[1]) then
           return
         end
-        Printer:AddToCurline(']')
+        me[1]:add_to_curline(']')
         return true
       end
     local multiliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('[')
-        Printer:RequestCleanLine()
-        if not Me:ProcessBlock(Node[1]) then
+      function(me, node)
+        local printer = me[1]
+        printer:add_to_curline('[')
+        printer:request_clean_line()
+        if not me:process_block(node[1]) then
           return
         end
-        Printer:RequestCleanLine()
-        Printer:AddToCurline(']')
+        printer:request_clean_line()
+        printer:add_to_curline(']')
         return true
       end
     return
-      function(Me, Node)
-        return Me:Variate(Node, oneliner, multiliner)
+      function(me, node)
+        return me:variate(node, oneliner, multiliner)
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.colon_name'
+  'workshop.concepts.lua.formatter.handlers.wrappers.colon_name'
 ] =
   function(...)
     return
-      function(Me, Node)
-        Me[2]:AddToCurline(':')
-        return Me:ProcessNode(Node[1])
+      function(me, node)
+        me[1]:add_to_curline(':')
+        return me:process_node(node[1])
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.dot_list'
+  'workshop.concepts.lua.formatter.handlers.wrappers.dot_list'
 ] =
   function(...)
     return
-      function(Me, Node)
-        return Me:ProcessList(Node, '.')
+      function(me, node)
+        return me:process_list(node, '.')
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.dot_name'
+  'workshop.concepts.lua.formatter.handlers.wrappers.dot_name'
 ] =
   function(...)
     return
-      function(Me, Node)
-        Me[2]:AddToCurline('.')
-        return Me:ProcessNode(Node[1])
+      function(me, node)
+        me[1]:add_to_curline('.')
+        return me:process_node(node[1])
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.expr_list'
+  'workshop.concepts.lua.formatter.handlers.wrappers.expr_list'
 ] =
   function(...)
     local oneline_delimiter = ', '
     local oneliner =
-      function(Me, Node)
-        return Me:ProcessList(Node, oneline_delimiter)
+      function(me, node)
+        return me:process_list(node, oneline_delimiter)
       end
     local multiline_delimiter =
-      function(Me)
-        local Printer = Me[2]
-        Printer:AddToTextline(',')
-        Printer:RequestCleanLine()
+      function(me)
+        me[1]:add_to_textline(',')
+        me[1]:request_clean_line()
       end
     local multiliner =
-      function(Me, Node)
-        Me[2]:RequestCleanLine()
+      function(me, node)
+        me[1]:request_clean_line()
         return
-          Me:ProcessList_Variative(
-            Node, oneline_delimiter, multiline_delimiter
+          me:process_list_variative(
+            node, oneline_delimiter, multiline_delimiter
           )
       end
     return
-      function(Me, Node)
-        return Me:Variate(Node, oneliner, multiliner)
+      function(me, node)
+        return me:variate(node, oneliner, multiliner)
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.func_args'
-] =
-  function(...)
-    return request('function_params')
-  end
-package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.function_params'
+  'workshop.concepts.lua.formatter.handlers.wrappers.function_params'
 ] =
   function(...)
     local oneline_delimiter = ', '
     local oneliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('(')
-        if not Me:ProcessList(Node, oneline_delimiter) then
+      function(me, node)
+        me[1]:add_to_curline('(')
+        if not me:process_list(node, oneline_delimiter) then
           return
         end
-        Printer:AddToCurline(')')
+        me[1]:add_to_curline(')')
         return true
       end
     local multiline_delimiter =
-      function(Me)
-        local Printer = Me[2]
-        Printer:AddToTextline(',')
-        Printer:RequestCleanLine()
+      function(me)
+        me[1]:add_to_textline(',')
+        me[1]:request_clean_line()
       end
     local multiline_block_processor =
-      function(Me, Node)
+      function(me, node)
         return
-          Me:ProcessList_Variative(
-            Node, oneline_delimiter, multiline_delimiter
+          me:process_list_variative(
+            node, oneline_delimiter, multiline_delimiter
           )
       end
     local multiliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Me[2]:AddToCurline('(')
-        Me[2]:RequestCleanLine()
-        if not Me:ProcessBlock(Node, multiline_block_processor) then
+      function(me, node)
+        local printer = me[1]
+        printer:add_to_curline('(')
+        printer:request_clean_line()
+        if not me:process_block(node, multiline_block_processor) then
           return
         end
-        Me[2]:RequestCleanLine()
-        Me[2]:AddToCurline(')')
+        printer:request_clean_line()
+        printer:add_to_curline(')')
         return true
       end
     return
-      function(Me, Node)
-        if (#Node == 0) then
-          Me[2]:AddToCurline('()')
+      function(me, node)
+        if (#node == 0) then
+          me[1]:add_to_curline('()')
           return true
         else
-          return Me:Variate(Node, oneliner, multiliner)
+          return me:variate(node, oneliner, multiliner)
         end
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.global_all'
+  'workshop.concepts.lua.formatter.handlers.wrappers.global_all'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        if not Node[1] then
-          Printer:AddToCurline('*')
+      function(me, node)
+        if not node[1] then
+          me[1]:add_to_curline('*')
           return true
         end
-        if not Me:ProcessNode(Node[1]) then
+        if not me:process_node(node[1]) then
           return
         end
-        Printer:AddToCurline(' *')
+        me[1]:add_to_curline(' *')
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.name_list'
-] =
-  function(...)
-    return request('expr_list')
-  end
-package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.name_parts'
+  'workshop.concepts.lua.formatter.handlers.wrappers.name_parts'
 ] =
   function(...)
     return
-      function(Me, Node)
-        return Me:ProcessList(Node)
+      function(me, node)
+        return me:process_list(node)
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.named_vararg'
+  'workshop.concepts.lua.formatter.handlers.wrappers.named_vararg'
 ] =
   function(...)
     return
-      function(Me, Node)
-        local Printer = Me[2]
-        if Node[1] then
-          Printer:AddToCurline('... ')
-          return Me:ProcessNode(Node[1])
+      function(me, node)
+        if node[1] then
+          me[1]:add_to_curline('... ')
+          return me:process_node(node[1])
         end
-        Printer:AddToCurline(Node.value)
+        me[1]:add_to_curline(node.value)
         return true
       end
   end
 package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.par_expr'
+  'workshop.concepts.lua.formatter.handlers.wrappers.par_expr'
 ] =
   function(...)
     local oneliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('(')
-        if not Me:ProcessNode(Node[1]) then
+      function(me, node)
+        me[1]:add_to_curline('(')
+        if not me:process_node(node[1]) then
           return
         end
-        Printer:AddToCurline(')')
+        me[1]:add_to_curline(')')
         return true
       end
     local multiliner =
-      function(Me, Node)
-        local Printer = Me[2]
-        Printer:AddToCurline('(')
-        Printer:RequestCleanLine()
-        if not Me:ProcessBlock(Node[1]) then
+      function(me, node)
+        local printer = me[1]
+        printer:add_to_curline('(')
+        printer:request_clean_line()
+        if not me:process_block(node[1]) then
           return
         end
-        Printer:RequestCleanLine()
-        Printer:AddToCurline(')')
+        printer:request_clean_line()
+        printer:add_to_curline(')')
         return true
       end
     return
-      function(Me, Node)
-        return Me:Variate(Node, oneliner, multiliner)
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.Formatter.Handlers.wrappers.ref_list'
-] =
-  function(...)
-    return request('expr_list')
-  end
-package.preload['workshop.concepts.lua.TokensSyntax.Delim'] =
-  function(...)
-    local LongBrackets = request('Particles.LongBrackets')
-    local match_regexp = request('!.mechs.parser.handy').match_regexp
-    local handy = request('!.mechs.processor.handy')
-    local opt_rep = handy.opt_rep
-    local cho = handy.cho
-    local Comment =
-      { '--', cho(LongBrackets, match_regexp('[^\n\r]*')) }
-    return { opt_rep(cho(match_regexp('[ \t\n\r]+'), Comment)) }
-  end
-package.preload['workshop.concepts.lua.TokensSyntax.Name'] =
-  function(...)
-    local name_pattern = '^[_A-Za-z][_A-Za-z0-9]*'
-    local Keywords_Map
-    do
-      local Keywords = request('!.concepts.lua.Keywords')
-      local map_values = request('!.table.map_values')
-      Keywords_Map = map_values(Keywords)
-    end
-    return
-      function(Input)
-        local init_pos = Input:get_position()
-        if Input:match_regexp(name_pattern) then
-          local capture =
-            Input:get_segment(init_pos, Input:get_position() - init_pos)
-          if not Keywords_Map[capture] then
-            return true
-          else
-            Input:set_position(init_pos)
-            return false
-          end
-        end
-      end
-  end
-package.preload['workshop.concepts.lua.TokensSyntax.Number'] =
-  function(...)
-    local handy = request('!.mechs.processor.handy')
-    local opt = handy.opt
-    local cho = handy.cho
-    local match_regexp = request('!.mechs.parser.handy').match_regexp
-    local Int_16 = match_regexp('%x+')
-    local HexNumber =
-      {
-        match_regexp('0[xX]'),
-        cho({ '.', Int_16 }, { Int_16, opt('.', opt(Int_16)) }),
-        opt(match_regexp('[pP][%+%-]?%d+')),
-      }
-    local Int_10 = match_regexp('%d+')
-    local DecNumber =
-      {
-        cho({ '.', Int_10 }, { Int_10, opt('.', opt(Int_10)) }),
-        opt(match_regexp('[eE][%+%-]?%d+')),
-      }
-    return cho(HexNumber, DecNumber)
-  end
-package.preload['workshop.concepts.lua.TokensSyntax.String'] =
-  function(...)
-    local handy = request('!.mechs.processor.handy')
-    local opt_rep = handy.opt_rep
-    local cho = handy.cho
-    local match_regexp = request('!.mechs.parser.handy').match_regexp
-    local LongBrackets = request('Particles.LongBrackets')
-    return
-      {
-        cho(
-          LongBrackets,
-          {
-            '"',
-            opt_rep(
-              cho(match_regexp([[[^%\%"]+]]), match_regexp([[%\.]]))
-            ),
-            '"',
-          },
-          {
-            "'",
-            opt_rep(
-              cho(match_regexp([[[^%\%']+]]), match_regexp([[%\.]]))
-            ),
-            "'",
-          }
-        ),
-      }
-  end
-package.preload['workshop.concepts.lua.TokensSyntax.Syntel'] =
-  function(...)
-    local name_pattern = '^[_A-Za-z][_A-Za-z0-9]*'
-    local Keywords_Map
-    do
-      local Keywords = request('!.concepts.lua.Keywords')
-      local map_values = request('!.table.map_values')
-      Keywords_Map = map_values(Keywords)
-    end
-    local is_keyword =
-      function(Input)
-        local init_pos = Input:get_position()
-        if Input:match_regexp(name_pattern) then
-          local capture =
-            Input:get_segment(init_pos, Input:get_position() - init_pos)
-          if Keywords_Map[capture] then
-            return true
-          else
-            Input:set_position(init_pos)
-            return false
-          end
-        end
-      end
-    local match_regexp = request('!.mechs.parser.handy').match_regexp
-    local cho = request('!.mechs.processor.handy').cho
-    return
-      {
-        cho(
-          is_keyword,
-          '==',
-          '~=',
-          '<=',
-          '<<',
-          '>=',
-          '>>',
-          '...',
-          '..',
-          '//',
-          '::',
-          match_regexp(
-            '[%=%~%<%>%.%:%,%;%/%(%)%[%]%{%}%-%+%#%*%%%^%&%|]'
-          )
-        ),
-      }
-  end
-package.preload[
-  'workshop.concepts.lua.TokensSyntax.Particles.LongBrackets'
-] =
-  function(...)
-    local match_regexp = request('!.mechs.parser.handy').match_regexp
-    return match_regexp('%[(%=*)%[.-%]%1%]')
-  end
-package.preload['workshop.concepts.lua.ast_transformer.align_nodes'] =
-  function(...)
-    local align_nodes
-    align_nodes =
-      function(Parent, index)
-        local Node = Parent[index]
-        if not is_table(Node) then
-          return
-        end
-        for subnode_index in ipairs(Node) do
-          align_nodes(Node, subnode_index)
-        end
-        if (#Node == 1) and is_string(Node[1]) then
-          Node.value = Node[1]
-          Node[1] = nil
-        end
-        if (Node.type == 'assign_or_call') then
-          if (Node[1].type == 'function_call') then
-            Node = Node[1]
-          else
-            Node.type = 'assignment'
-          end
-        elseif (Node.type == 'var_or_call') then
-          if (Node[#Node].type == 'func_args') then
-            Node.type = 'function_call'
-          else
-            Node.type = 'var_ref'
-          end
-        elseif (Node.type == 'local_statement') then
-          if (Node[1].type == 'named_function') then
-            Node[1].type = 'local_named_function'
-          else
-            Node[1].type = 'local_assignment'
-          end
-          Node = Node[1]
-        end
-        Parent[index] = Node
-      end
-    return align_nodes
-  end
-package.preload['workshop.concepts.lua.ast_transformer.restruc_nodes'] =
-  function(...)
-    local Handlers
-    local restruc_nodes
-    restruc_nodes =
-      function(Node)
-        for _, Subnode in ipairs(Node) do
-          restruc_nodes(Subnode)
-        end
-        local handler = Handlers[Node.type]
-        if handler then
-          handler(Node)
-        end
-      end
-    return
-      function(Node, Arg_Handlers)
-        Handlers = Arg_Handlers
-        restruc_nodes(Node)
-        Handlers = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.Interface'
-] =
-  function(...)
-    return
-      {
-        ['attr_name_list'] = request('attr_name_list'),
-        ['assignment'] = request('assignment'),
-        ['else_part'] = request('else_part'),
-        ['elseif_part'] = request('elseif_part'),
-        ['expression'] = request('expression'),
-        ['function_call'] = request('function_call'),
-        ['function_params'] = request('function_params'),
-        ['generic_for_block'] = request('generic_for_block'),
-        ['if_block'] = request('if_block'),
-        ['if_part'] = request('if_part'),
-        ['key_val'] = request('key_val'),
-        ['local_assignment'] = request('local_assignment'),
-        ['local_named_function'] = request('local_named_function'),
-        ['named_function'] = request('named_function'),
-        ['numeric_for_block'] = request('numeric_for_block'),
-        ['repeat_block'] = request('repeat_block'),
-        ['type_function'] = request('type_function'),
-        ['var_ref'] = request('var_ref'),
-        ['while_block'] = request('while_block'),
-      }
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.assignment'
-] =
-  function(...)
-    local add_to_list = request('!.concepts.list.add_item')
-    local replace = request('!.table.replace')
-    return
-      function(Node)
-        local DestList = { type = 'ref_list' }
-        for i = 1, (#Node - 1) do
-          add_to_list(DestList, Node[i])
-        end
-        local Result =
-          {
-            type = 'assignment',
-            dest_list = DestList,
-            val_list = Node[#Node],
-          }
-        replace(Node, Result)
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.attr_name_list'
-] =
-  function(...)
-    local tbl_remove = table.remove
-    return
-      function(Node)
-        if (Node[1].type == 'attribute') then
-          Node.list_attr = Node[1]
-          tbl_remove(Node, 1)
-        end
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.else_part'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.body = Node[1]
-        Node[1] = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.elseif_part'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.condition = Node[1]
-        Node[1] = nil
-        Node.body = Node[2]
-        Node[2] = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.expression'
-] =
-  function(...)
-    local replace = request('!.table.replace')
-    local add_to_list = request('!.concepts.list.add_item')
-    return
-      function(Node)
-        local Result = { }
-        local i = 1
-        local num_items = #Node
-        local Term = { }
-        if (Node[i].type == 'un_op') then
-          local UnOps = { }
-          while (Node[i].type == 'un_op') and (i <= num_items) do
-            add_to_list(UnOps, Node[i].value)
-            i = i + 1
-          end
-          Term.un_ops = UnOps
-        end
-        Term.operand = Node[i]
-        Node[i] = nil
-        i = i + 1
-        if (i < num_items) and (Node[i].type == 'bin_op') then
-          Term.bin_op = Node[i].value
-          i = i + 1
-        end
-        add_to_list(Result, Term)
-        if (i == num_items) then
-          local LastNode = Node[i]
-          if (LastNode.type == 'expression') then
-            for _, LastNodeItem in ipairs(LastNode) do
-              add_to_list(Result, LastNodeItem)
-            end
-          end
-        end
-        Result.type = Node.type
-        replace(Node, Result)
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.function_call'
-] =
-  function(...)
-    local add_to_list = request('!.concepts.list.add_item')
-    local replace = request('!.table.replace')
-    return
-      function(Node)
-        local Result
-        local NamePart
-        local seek_pos = 0
-        while true do
-          if (seek_pos < #Node) then
-            NamePart = { Result }
-            seek_pos = seek_pos + 1
-          else
-            break
-          end
-          NamePart.type = 'name_parts'
-          while (Node[seek_pos].type ~= 'func_args') do
-            add_to_list(NamePart, Node[seek_pos])
-            seek_pos = seek_pos + 1
-          end
-          Result =
-            {
-              type = 'function_call',
-              name_part = NamePart,
-              args = Node[seek_pos],
-            }
-        end
-        replace(Node, Result)
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.function_params'
-] =
-  function(...)
-    local add_to_list = request('!.concepts.list.add_item')
-    local replace = request('!.table.replace')
-    return
-      function(Node)
-        local Result = { type = Node.type }
-        if Node[1] then
-          if (Node[1].type == 'name_list') then
-            for _, NameRec in ipairs(Node[1]) do
-              add_to_list(Result, NameRec)
-            end
-          else
-            add_to_list(Result, Node[1])
-          end
-        end
-        if Node[2] then
-          add_to_list(Result, Node[2])
-        end
-        Result = new(Result)
-        replace(Node, Result)
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.generic_for_block'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.names = Node[1]
-        Node[1] = nil
-        Node.expr_list = Node[2]
-        Node[2] = nil
-        Node.body = Node[3]
-        Node[3] = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.if_block'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.if_part = Node[1]
-        Node[1] = nil
-        local seek_pos = 2
-        local elseif_parts = { }
-        while Node[seek_pos] and (Node[seek_pos].type == 'elseif_part') do
-          elseif_parts[#elseif_parts + 1] = Node[seek_pos]
-          Node[seek_pos] = nil
-          seek_pos = seek_pos + 1
-        end
-        if next(elseif_parts) then
-          Node.elseif_parts = elseif_parts
-        end
-        if Node[seek_pos] and (Node[seek_pos].type == 'else_part') then
-          Node.else_part = Node[seek_pos]
-          Node[seek_pos] = nil
-          seek_pos = seek_pos + 1
-        end
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.if_part'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.condition = Node[1]
-        Node[1] = nil
-        Node.body = Node[2]
-        Node[2] = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.key_val'
-] =
-  function(...)
-    return
-      function(Node)
-        if (#Node == 2) then
-          Node.key = Node[1]
-          Node.value = Node[2]
-          Node[2] = nil
-        else
-          Node.value = Node[1]
-        end
-        Node[1] = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.local_assignment'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.name_list = Node[1]
-        Node[1] = nil
-        Node.val_list = Node[2]
-        Node[2] = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.local_named_function'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.dotted_name = Node[1]
-        Node[1] = nil
-        Node.params = Node[2]
-        Node[2] = nil
-        Node.body = Node[3]
-        Node[3] = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.named_function'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.dotted_name = Node[1]
-        Node[1] = nil
-        local seek_pos = 2
-        if (Node[seek_pos].type == 'colon_name') then
-          Node.colon_name = Node[seek_pos]
-          Node[seek_pos] = nil
-          seek_pos = seek_pos + 1
-        end
-        Node.params = Node[seek_pos]
-        Node[seek_pos] = nil
-        seek_pos = seek_pos + 1
-        Node.body = Node[seek_pos]
-        Node[seek_pos] = nil
-        seek_pos = seek_pos + 1
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.numeric_for_block'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.index = Node[1]
-        Node[1] = nil
-        Node.start_val = Node[2]
-        Node[2] = nil
-        Node.end_val = Node[3]
-        Node[3] = nil
-        local seek_pos = 4
-        if (Node[seek_pos].type == 'expression') then
-          Node.increment = Node[seek_pos]
-          Node[seek_pos] = nil
-          seek_pos = seek_pos + 1
-        end
-        Node.body = Node[seek_pos]
-        Node[seek_pos] = nil
-        seek_pos = seek_pos + 1
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.repeat_block'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.body = Node[1]
-        Node[1] = nil
-        Node.condition = Node[2]
-        Node[2] = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.type_function'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.params = Node[1]
-        Node[1] = nil
-        Node.body = Node[2]
-        Node[2] = nil
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.var_ref'
-] =
-  function(...)
-    local add_to_list = request('!.concepts.list.add_item')
-    local replace = request('!.table.replace')
-    return
-      function(Node)
-        local Result
-        local NamePart
-        local seek_pos = 0
-        while true do
-          if (seek_pos < #Node) then
-            NamePart = { Result }
-            seek_pos = seek_pos + 1
-          else
-            break
-          end
-          while
-            (seek_pos <= #Node) and
-            (Node[seek_pos].type ~= 'func_args') do
-            add_to_list(NamePart, Node[seek_pos])
-            seek_pos = seek_pos + 1
-          end
-          NamePart.type = 'name_parts'
-          local Args
-          if Node[seek_pos] then
-            Args = Node[seek_pos]
-          end
-          Result = { name_part = NamePart, args = Args }
-          if Args then
-            Result.type = 'function_call'
-          else
-            Result.type = 'var_ref'
-          end
-        end
-        replace(Node, Result)
-      end
-  end
-package.preload[
-  'workshop.concepts.lua.ast_transformer.Handlers.while_block'
-] =
-  function(...)
-    return
-      function(Node)
-        Node.condition = Node[1]
-        Node[1] = nil
-        Node.body = Node[2]
-        Node[2] = nil
+      function(me, node)
+        return me:variate(node, oneliner, multiliner)
       end
   end
 package.preload['workshop.concepts.lua.syntax.expression'] =
@@ -2325,17 +2262,17 @@ package.preload['workshop.concepts.lua.syntax.expression'] =
     local handy = request('!.mechs.processor.handy')
     local opt_rep = handy.opt_rep
     local cho = handy.cho
-    local Vararg = request('words.vararg')
-    local Type_Table = request('type_table')
-    local Type_Function
+    local vararg = request('words.vararg')
+    local type_table = request('type_table')
+    local type_function
     do
       local function_body = request('statements.function_body')
-      Type_Function =
+      type_function =
         { name = 'type_function', 'function', function_body }
     end
-    local RefOrCall = request('qualifiers.var_or_call')
-    local UnaryOperator = { name = 'un_op', cho('-', '#', '~', 'not') }
-    local BinaryOperator =
+    local ref_or_call = request('qualifiers.var_or_call')
+    local unary_operator = { name = 'un_op', cho('-', '#', '~', 'not') }
+    local binary_operator =
       {
         name = 'bin_op',
         cho(
@@ -2362,27 +2299,27 @@ package.preload['workshop.concepts.lua.syntax.expression'] =
           '|'
         ),
       }
-    local TokensAccessor = request('!.concepts.lua.TokensAccessor')
-    local Type_Nil = { name = 'nil', 'nil' }
-    local Type_Boolean = { name = 'boolean', cho('false', 'true') }
-    local Type_Number = { name = 'number', TokensAccessor.IsNumber }
-    local Type_String = request('type_string')
+    local tokens_accessor = request('!.concepts.lua.tokens_accessor')
+    local type_nil = { name = 'nil', 'nil' }
+    local type_boolean = { name = 'boolean', cho('false', 'true') }
+    local type_number = { name = 'number', tokens_accessor.is_number }
+    local type_string = request('type_string')
     return
       {
         name = 'expression',
         inner_name = 'expression',
-        opt_rep(UnaryOperator),
+        opt_rep(unary_operator),
         cho(
-          RefOrCall,
-          Vararg,
-          Type_Nil,
-          Type_Boolean,
-          Type_Number,
-          Type_String,
-          Type_Table,
-          Type_Function
+          ref_or_call,
+          vararg,
+          type_nil,
+          type_boolean,
+          type_number,
+          type_string,
+          type_table,
+          type_function
         ),
-        opt_rep(BinaryOperator, '>expression'),
+        opt_rep(binary_operator, '>expression'),
       }
   end
 package.preload['workshop.concepts.lua.syntax.statements'] =
@@ -2391,30 +2328,30 @@ package.preload['workshop.concepts.lua.syntax.statements'] =
     local opt = handy.opt
     local opt_rep = handy.opt_rep
     local cho = handy.cho
-    local AssignOrCall
+    local assign_or_call
     do
-      local RefOrCall = request('qualifiers.var_or_call')
+      local ref_or_call = request('qualifiers.var_or_call')
       local expr_list = request('wrappers.expr_list')
-      AssignOrCall =
+      assign_or_call =
         {
           name = 'assign_or_call',
-          RefOrCall,
-          opt(opt_rep(',', RefOrCall), '=', expr_list),
+          ref_or_call,
+          opt(opt_rep(',', ref_or_call), '=', expr_list),
         }
     end
-    local NamedFunction = request('statements.named_function')
-    local Name = request('words.name')
-    local EmptyStatement = { name = 'empty_statement', ';' }
-    local LabelStatement =
-      { name = 'label_statement', '::', Name, '::' }
-    local GotoStatement = { name = 'goto_statement', 'goto', Name }
-    local BreakStatement = { name = 'break_statement', 'break' }
+    local named_function = request('statements.named_function')
+    local name = request('words.name')
+    local empty_statement = { name = 'empty_statement', ';' }
+    local label_statement =
+      { name = 'label_statement', '::', name, '::' }
+    local goto_statement = { name = 'goto_statement', 'goto', name }
+    local break_statement = { name = 'break_statement', 'break' }
     local name_list = request('wrappers.name_list')
     local expr_list = request('wrappers.expr_list')
-    local attribute = { name = 'attribute', '<', Name, '>' }
+    local attribute = { name = 'attribute', '<', name, '>' }
     local attr_name_list
     do
-      local attr_name = { name = 'attr_name', Name, opt(attribute) }
+      local attr_name = { name = 'attr_name', name, opt(attribute) }
       local list = request('!.mechs.processor.handy').list
       attr_name_list =
         {
@@ -2423,7 +2360,7 @@ package.preload['workshop.concepts.lua.syntax.statements'] =
           list(attr_name, ','),
         }
     end
-    local LocalStatement =
+    local local_statement =
       {
         name = 'local_statement',
         'local',
@@ -2433,21 +2370,21 @@ package.preload['workshop.concepts.lua.syntax.statements'] =
             attr_name_list,
             opt('=', expr_list),
           },
-          NamedFunction
+          named_function
         ),
       }
-    local GlobalStatement =
+    local global_statement =
       {
         name = 'global_statement',
         'global',
         cho(
           { attr_name_list, opt('=', expr_list) },
-          NamedFunction,
+          named_function,
           { name = 'global_all', opt(attribute), '*' }
         ),
       }
-    local DoBlock = { name = 'do_block', 'do', '>statements', 'end' }
-    local IfBlock =
+    local do_block = { name = 'do_block', 'do', '>statements', 'end' }
+    local if_block =
       {
         name = 'if_block',
         { name = 'if_part', 'if', '>expression', 'then', '>statements' },
@@ -2463,7 +2400,7 @@ package.preload['workshop.concepts.lua.syntax.statements'] =
         opt({ name = 'else_part', 'else', '>statements' }),
         'end',
       }
-    local WhileBlock =
+    local while_block =
       {
         name = 'while_block',
         'while',
@@ -2472,7 +2409,7 @@ package.preload['workshop.concepts.lua.syntax.statements'] =
         '>statements',
         'end',
       }
-    local RepeatBlock =
+    local repeat_block =
       {
         name = 'repeat_block',
         'repeat',
@@ -2480,7 +2417,7 @@ package.preload['workshop.concepts.lua.syntax.statements'] =
         'until',
         '>expression',
       }
-    local GenericForBlock =
+    local generic_for_block =
       {
         name = 'generic_for_block',
         'for',
@@ -2491,11 +2428,11 @@ package.preload['workshop.concepts.lua.syntax.statements'] =
         '>statements',
         'end',
       }
-    local NumericForBlock =
+    local numeric_for_block =
       {
         name = 'numeric_for_block',
         'for',
-        Name,
+        name,
         '=',
         '>expression',
         ',',
@@ -2505,12 +2442,12 @@ package.preload['workshop.concepts.lua.syntax.statements'] =
         '>statements',
         'end',
       }
-    local ReturnStatement =
+    local return_statement =
       {
         name = 'return_statement',
         'return',
         opt(expr_list),
-        opt(EmptyStatement),
+        opt(empty_statement),
       }
     return
       {
@@ -2518,29 +2455,29 @@ package.preload['workshop.concepts.lua.syntax.statements'] =
         inner_name = 'statements',
         opt_rep(
           cho(
-            AssignOrCall,
-            NamedFunction,
-            EmptyStatement,
-            LabelStatement,
-            GotoStatement,
-            BreakStatement,
-            LocalStatement,
-            GlobalStatement,
-            DoBlock,
-            IfBlock,
-            WhileBlock,
-            RepeatBlock,
-            GenericForBlock,
-            NumericForBlock
+            assign_or_call,
+            named_function,
+            empty_statement,
+            label_statement,
+            goto_statement,
+            break_statement,
+            local_statement,
+            global_statement,
+            do_block,
+            if_block,
+            while_block,
+            repeat_block,
+            generic_for_block,
+            numeric_for_block
           )
         ),
-        opt(ReturnStatement),
+        opt(return_statement),
       }
   end
 package.preload['workshop.concepts.lua.syntax.type_string'] =
   function(...)
-    local TokensAccessor = request('!.concepts.lua.TokensAccessor')
-    return { name = 'string', TokensAccessor.IsString }
+    local tokens_accessor = request('!.concepts.lua.tokens_accessor')
+    return { name = 'string', tokens_accessor.is_string }
   end
 package.preload['workshop.concepts.lua.syntax.type_table'] =
   function(...)
@@ -2548,23 +2485,23 @@ package.preload['workshop.concepts.lua.syntax.type_table'] =
     local cho = handy.cho
     local list = handy.list
     local opt = handy.opt
-    local KeyVal
+    local key_val
     do
       local bracket_expr = request('wrappers.bracket_expr')
       local name = request('words.name')
-      KeyVal =
+      key_val =
         {
           name = 'key_val',
           opt(cho(bracket_expr, name), '='),
           '>expression',
         }
     end
-    local RecDelim = { cho(',', ';') }
+    local rec_delim = { cho(',', ';') }
     return
       {
         name = 'table',
         '{',
-        opt(list(KeyVal, RecDelim), opt(RecDelim)),
+        opt(list(key_val, rec_delim), opt(rec_delim)),
         '}',
       }
   end
@@ -2574,16 +2511,16 @@ package.preload['workshop.concepts.lua.syntax.qualifiers.var_or_call'] =
     local cho = handy.cho
     local opt = handy.opt
     local opt_rep = handy.opt_rep
-    local Name = request('^.words.name')
-    local BracketExpr = request('^.wrappers.bracket_expr')
-    local DotName = { name = 'dot_name', '.', Name }
-    local ColonName = request('^.wrappers.colon_name')
-    local FuncArgs
+    local name = request('^.words.name')
+    local bracket_expr = request('^.wrappers.bracket_expr')
+    local dot_name = { name = 'dot_name', '.', name }
+    local colon_name = request('^.wrappers.colon_name')
+    local func_args
     do
       local expr_list = request('^.wrappers.expr_list')
       local type_string = request('^.type_string')
       local type_table = request('^.type_table')
-      FuncArgs =
+      func_args =
         {
           name = 'func_args',
           cho({ '(', opt(expr_list), ')' }, type_string, type_table),
@@ -2592,8 +2529,10 @@ package.preload['workshop.concepts.lua.syntax.qualifiers.var_or_call'] =
     return
       {
         name = 'var_or_call',
-        cho(Name, { name = 'par_expr', '(', '>expression', ')' }),
-        opt_rep(cho(BracketExpr, DotName, { opt(ColonName), FuncArgs })),
+        cho(name, { name = 'par_expr', '(', '>expression', ')' }),
+        opt_rep(
+          cho(bracket_expr, dot_name, { opt(colon_name), func_args })
+        ),
       }
   end
 package.preload['workshop.concepts.lua.syntax.statements.function_body'] =
@@ -2601,15 +2540,15 @@ package.preload['workshop.concepts.lua.syntax.statements.function_body'] =
     local handy = request('!.mechs.processor.handy')
     local opt = handy.opt
     local cho = handy.cho
-    local Name = request('^.words.name')
-    local NamedVararg = { name = 'named_vararg', '...', opt(Name) }
-    local NameList = request('^.wrappers.name_list')
+    local name = request('^.words.name')
+    local named_vararg = { name = 'named_vararg', '...', opt(name) }
+    local names = request('^.wrappers.name_list')
     return
       {
         {
           name = 'function_params',
           '(',
-          opt(cho(NamedVararg, { NameList, opt(',', NamedVararg) })),
+          opt(cho(named_vararg, { names, opt(',', named_vararg) })),
           ')',
         },
         '>statements',
@@ -2637,8 +2576,8 @@ package.preload[
   end
 package.preload['workshop.concepts.lua.syntax.words.name'] =
   function(...)
-    local TokensAccessor = request('!.concepts.lua.TokensAccessor')
-    return { name = 'name', TokensAccessor.IsName }
+    local tokens_accessor = request('!.concepts.lua.tokens_accessor')
+    return { name = 'name', tokens_accessor.is_name }
   end
 package.preload['workshop.concepts.lua.syntax.words.vararg'] =
   function(...)
@@ -2664,10 +2603,144 @@ package.preload['workshop.concepts.lua.syntax.wrappers.name_list'] =
     local list = request('!.mechs.processor.handy').list
     return { name = 'name_list', list(name, ',') }
   end
+package.preload['workshop.concepts.lua.tokens_syntax.delim'] =
+  function(...)
+    local long_brackets = request('particles.long_brackets')
+    local match_regexp = request('!.mechs.parser.handy').match_regexp
+    local handy = request('!.mechs.processor.handy')
+    local opt_rep = handy.opt_rep
+    local cho = handy.cho
+    local comment =
+      { '--', cho(long_brackets, match_regexp('[^\n\r]*')) }
+    return { opt_rep(cho(match_regexp('[ \t\n\r]+'), comment)) }
+  end
+package.preload['workshop.concepts.lua.tokens_syntax.name'] =
+  function(...)
+    local match_name = request('particles.match_name')
+    local keywords_map = request('!.concepts.lua.keywords_map')
+    return
+      function(input)
+        local init_pos = input:get_position()
+        if match_name(input) then
+          local token =
+            input:get_segment(init_pos, input:get_position() - init_pos)
+          if not keywords_map[token] then
+            return true
+          else
+            input:set_position(init_pos)
+            return false
+          end
+        end
+      end
+  end
+package.preload['workshop.concepts.lua.tokens_syntax.number'] =
+  function(...)
+    local handy = request('!.mechs.processor.handy')
+    local opt = handy.opt
+    local cho = handy.cho
+    local match_regexp = request('!.mechs.parser.handy').match_regexp
+    local int_16 = match_regexp('%x+')
+    local hex_number =
+      {
+        match_regexp('0[xX]'),
+        cho({ '.', int_16 }, { int_16, opt('.', opt(int_16)) }),
+        opt(match_regexp('[pP][%+%-]?%d+')),
+      }
+    local int_10 = match_regexp('%d+')
+    local dec_number =
+      {
+        cho({ '.', int_10 }, { int_10, opt('.', opt(int_10)) }),
+        opt(match_regexp('[eE][%+%-]?%d+')),
+      }
+    return cho(hex_number, dec_number)
+  end
+package.preload['workshop.concepts.lua.tokens_syntax.string'] =
+  function(...)
+    local handy = request('!.mechs.processor.handy')
+    local opt_rep = handy.opt_rep
+    local cho = handy.cho
+    local match_regexp = request('!.mechs.parser.handy').match_regexp
+    local long_brackets = request('particles.long_brackets')
+    return
+      {
+        cho(
+          long_brackets,
+          {
+            '"',
+            opt_rep(
+              cho(match_regexp([[[^%\%"]+]]), match_regexp([[%\.]]))
+            ),
+            '"',
+          },
+          {
+            "'",
+            opt_rep(
+              cho(match_regexp([[[^%\%']+]]), match_regexp([[%\.]]))
+            ),
+            "'",
+          }
+        ),
+      }
+  end
+package.preload['workshop.concepts.lua.tokens_syntax.syntel'] =
+  function(...)
+    local match_name = request('particles.match_name')
+    local keywords_map = request('!.concepts.lua.keywords_map')
+    local is_keyword =
+      function(input)
+        local init_pos = input:get_position()
+        if match_name(input) then
+          local token =
+            input:get_segment(init_pos, input:get_position() - init_pos)
+          if keywords_map[token] then
+            return true
+          else
+            input:set_position(init_pos)
+            return false
+          end
+        end
+      end
+    local match_regexp = request('!.mechs.parser.handy').match_regexp
+    local cho = request('!.mechs.processor.handy').cho
+    return
+      {
+        cho(
+          is_keyword,
+          '==',
+          '~=',
+          '<=',
+          '<<',
+          '>=',
+          '>>',
+          '...',
+          '..',
+          '//',
+          '::',
+          match_regexp(
+            '[%=%~%<%>%.%:%,%;%/%(%)%[%]%{%}%-%+%#%*%%%^%&%|]'
+          )
+        ),
+      }
+  end
+package.preload[
+  'workshop.concepts.lua.tokens_syntax.particles.long_brackets'
+] =
+  function(...)
+    local match_regexp = request('!.mechs.parser.handy').match_regexp
+    return match_regexp('%[(%=*)%[.-%]%1%]')
+  end
+package.preload[
+  'workshop.concepts.lua.tokens_syntax.particles.match_name'
+] =
+  function(...)
+    local name_pattern = '^[_A-Za-z][_A-Za-z0-9]*'
+    local match_regexp = request('!.mechs.parser.handy').match_regexp
+    return match_regexp(name_pattern)
+  end
 package.preload['workshop.concepts.shell.split_shebang'] =
   function(...)
     local shebang_prefix = '#!'
-    local newline = request('!.concepts.Ascii.Chars').newline
+    local newline = request('!.concepts.ascii.chars').newline
     local starts_with = request('!.string.starts_with')
     local str_find = string.find
     local str_sub = string.sub
@@ -2688,215 +2761,56 @@ package.preload['workshop.concepts.shell.split_shebang'] =
   end
 package.preload['workshop.convert.lines_to_str'] =
   function(...)
-    local list_to_string
-    local newline
-    do
-      list_to_string = request('!.concepts.list.to_string')
-      local AsciiChars = request('!.concepts.Ascii.Chars')
-      newline = AsciiChars.newline
-    end
-    local lines_to_str =
-      function(Lines)
-        return list_to_string(Lines, newline) .. newline
+    local list_to_string = request('!.concepts.list.to_string')
+    local newline = request('!.concepts.ascii.chars').newline
+    return
+      function(lines)
+        return list_to_string(lines, newline) .. newline
       end
-    return lines_to_str
   end
 package.preload['workshop.lua.reformat_code'] =
   function(...)
-    local get_ast
-    do
-      local TokensSyntax = request('!.concepts.lua.TokensSyntax')
-      local generic_parse = request('!.mechs.generic_loader')
-      local TokensAccessorClass =
-        request('!.concepts.lua.TokensAccessor')
-      local StructsSyntax = request('!.concepts.lua.syntax')
-      local parse = request('!.mechs.parser.parse')
-      get_ast =
-        function(code_str)
-          local ParserAst = { }
-          do
-            local TokensList = generic_parse(code_str, TokensSyntax)
-            local TokensAccessor =
-              TokensAccessorClass.create(TokensList)
-            local is_parsed
-            is_parsed, ParserAst = parse(TokensAccessor, StructsSyntax)
-          end
-          return ParserAst
-        end
-    end
     local get_formatter_ast
     do
+      local get_ast
+      do
+        local tokens_syntax = request('!.concepts.lua.tokens_syntax')
+        local generic_parse = request('!.mechs.generic_loader')
+        local tokens_accessor =
+          request('!.concepts.lua.tokens_accessor')
+        local syntax = request('!.concepts.lua.syntax')
+        local parse = request('!.mechs.parser.parse')
+        get_ast =
+          function(code_str)
+            local syntax_ast = { }
+            do
+              local tokens = generic_parse(code_str, tokens_syntax)
+              local tokens_accessor = tokens_accessor.create(tokens)
+              local is_parsed
+              is_parsed, syntax_ast = parse(tokens_accessor, syntax)
+            end
+            return syntax_ast
+          end
+      end
       local transform_ast = request('!.concepts.lua.transform_ast')
       get_formatter_ast =
         function(lua_code_str)
           return transform_ast(get_ast(lua_code_str))
         end
     end
-    local reformat_code
-    do
-      local split_shebang = request('!.concepts.shell.split_shebang')
-      local serialize_ast = request('!.concepts.lua.run_formatter')
-      local newline = request('!.concepts.Ascii.Chars').newline
-      reformat_code =
-        function(shell_code_str, Options)
-          local shebang_str, lua_code_str =
-            split_shebang(shell_code_str)
-          local result_str =
-            serialize_ast(get_formatter_ast(lua_code_str), Options)
-          if shebang_str then
-            result_str = shebang_str .. newline .. result_str
-          end
-          return result_str
+    local split_shebang = request('!.concepts.shell.split_shebang')
+    local serialize_ast = request('!.concepts.lua.run_formatter')
+    local newline = request('!.concepts.ascii.chars').newline
+    return
+      function(shell_code_str, options)
+        local shebang_str, lua_code_str = split_shebang(shell_code_str)
+        local result_str =
+          serialize_ast(get_formatter_ast(lua_code_str), options)
+        if shebang_str then
+          result_str = shebang_str .. newline .. result_str
         end
-    end
-    return reformat_code
-  end
-package.preload['workshop.mechs.TextBlock'] =
-  function(...)
-    local flush
-    do
-      local trim = request('!.string.trim_tail')
-      local add_to_list = request('!.concepts.list.add_item')
-      flush =
-        function(Me)
-          add_to_list(Me[5], trim(Me[1]))
-          for _ = 2, Me[2] do
-            add_to_list(Me[5], '')
-          end
-          Me[2] = 0
-          Me[1] = ''
-        end
-    end
-    local add_to_textline
-    do
-      local utf8_len = utf8.len
-      local str_len = string.len
-      local max = math.max
-      add_to_textline =
-        function(Me, str)
-          if (Me[1] == '') then
-            Me[1] = Me[3]:ToString()
-          end
-          Me[1] = Me[1] .. str
-          local len = utf8_len(Me[1]) or str_len(Me[1])
-          Me[4] = max(Me[4], len)
-        end
-    end
-    local add_to_curline =
-      function(Me, str)
-        if (str == '') then
-          return
-        end
-        if (Me[2] > 0) then
-          flush(Me)
-        end
-        add_to_textline(Me, str)
+        return result_str
       end
-    local newline =
-      function(Me)
-        Me[2] = Me[2] + 1
-      end
-    local on_clean_line =
-      function(Me)
-        return (Me[1] == '') or (Me[2] > 0)
-      end
-    local request_clean_line =
-      function(Me)
-        if not on_clean_line(Me) then
-          newline(Me)
-        end
-      end
-    local request_empty_line =
-      function(Me)
-        request_clean_line(Me)
-        if (Me[2] == 1) then
-          newline(Me)
-        end
-      end
-    local inc_indent =
-      function(Me)
-        Me[3]:Inc()
-      end
-    local dec_indent =
-      function(Me)
-        Me[3]:Dec()
-      end
-    local get_text
-    do
-      local lines_to_str = request('!.convert.lines_to_str')
-      get_text =
-        function(Me)
-          flush(Me)
-          return lines_to_str(Me[5])
-        end
-    end
-    local get_width =
-      function(Me)
-        return Me[4]
-      end
-    local seed
-    do
-      local utf8_len = utf8.len
-      seed =
-        function(Me)
-          local AnotherMe =
-            {
-              [1] = Me[1],
-              [2] = Me[2],
-              [3] = new(Me[3]),
-              [4] = 0,
-              [5] = { },
-            }
-          setmetatable(AnotherMe, getmetatable(Me))
-          return AnotherMe
-        end
-    end
-    local graft
-    do
-      local add_list = request('!.concepts.list.add_list')
-      local max = math.max
-      graft =
-        function(Me, AnotherMe)
-          Me[1] = AnotherMe[1]
-          Me[2] = AnotherMe[2]
-          Me[4] = max(Me[4], AnotherMe[4])
-          add_list(Me[5], AnotherMe[5])
-        end
-    end
-    local Interface
-    local create
-    do
-      local Indent = request('!.concepts.Indent')
-      local max_indent = 100
-      local attach_methods = request('!.table.attach_methods')
-      create =
-        function(indent_chunk)
-          local Indent = Indent.create()
-          Indent:SetIndentChunk(indent_chunk)
-          Indent:SetMaxIndentLevel(max_indent)
-          local Me =
-            { [1] = '', [2] = 0, [3] = Indent, [4] = 0, [5] = { } }
-          attach_methods(Me, Interface)
-          return Me
-        end
-    end
-    Interface =
-      {
-        create = create,
-        AddToTextline = add_to_textline,
-        AddToCurline = add_to_curline,
-        Newline = newline,
-        OnCleanLine = on_clean_line,
-        RequestCleanLine = request_clean_line,
-        RequestEmptyLine = request_empty_line,
-        IncIndent = inc_indent,
-        DecIndent = dec_indent,
-        GetText = get_text,
-        GetWidth = get_width,
-        Seed = seed,
-        Graft = graft,
-      }
-    return Interface
   end
 package.preload['workshop.mechs.generic_loader'] =
   function(...)
@@ -2925,6 +2839,28 @@ package.preload['workshop.mechs.generic_loader'] =
         return Result, unparsed_tail
       end
   end
+package.preload['workshop.mechs.processor'] =
+  function(...)
+    local match = request('processor.match')
+    local interface
+    local create
+    do
+      local assert_is_stream =
+        request('!.mechs.streams.assert_is_stream')
+      local attach_methods = request('!.table.attach_methods')
+      create =
+        function(input, output, on_match)
+          assert_is_stream(input)
+          assert_is_stream(output)
+          assert_function(on_match)
+          local me = { input, output, on_match }
+          attach_methods(me, interface)
+          return me
+        end
+    end
+    interface = { create = create, match = match }
+    return interface
+  end
 package.preload['workshop.mechs.geometry.1d.segments.is_inside'] =
   function(...)
     return
@@ -2939,14 +2875,16 @@ package.preload['workshop.mechs.geometry.1d.segments.is_inside'] =
 package.preload['workshop.mechs.graph.assembly_order'] =
   function(...)
     local dfs = request('dfs')
+    local add_to_list = request('!.concepts.list.add_item')
     return
       function(graph, options)
-        options = options or { }
         local assembly_order_seq = { }
-        options.handle_leave =
-          function(node, node_rec, deep)
-            assembly_order_seq[#assembly_order_seq + 1] = node
+        local handle_leave =
+          function(node)
+            add_to_list(assembly_order_seq, node)
           end
+        options = options or { }
+        options.handle_leave = handle_leave
         local node_recs = dfs(graph, options)
         return node_recs, assembly_order_seq
       end
@@ -2964,12 +2902,12 @@ package.preload['workshop.mechs.graph.dfs'] =
 package.preload['workshop.mechs.graph.dfs.dfs'] =
   function(...)
     return
-      function(self, graph)
-        self.nodes_status = { }
-        local handle_discovery = self.handle_discovery
-        local handle_leave = self.handle_leave
-        local nodes_status = self.nodes_status
-        local get_children = self.get_children
+      function(me, graph)
+        me.nodes_status = { }
+        local handle_discovery = me.handle_discovery
+        local handle_leave = me.handle_leave
+        local nodes_status = me.nodes_status
+        local get_children = me.get_children
         local init_node_rec =
           function(node)
             nodes_status[node] = nodes_status[node] or { node = node }
@@ -2999,7 +2937,7 @@ package.preload['workshop.mechs.graph.dfs.dfs'] =
             node_rec.discovery_time = time
             node_rec.color = 'gray'
             handle_discovery(node, node_rec, depth)
-            for _, child in ipairs(self:get_children(node)) do
+            for _, child in ipairs(me:get_children(node)) do
               process(node, child.key, child.value, depth)
             end
             time = time + 1
@@ -3018,20 +2956,20 @@ package.preload['workshop.mechs.graph.dfs.get_children'] =
     local compare_keys = request('!.table.ordered_pass.compare_keys')
     local tbl_sort = table.sort
     return
-      function(Me, Node)
-        local also_visit_keys = Me.also_visit_keys
-        local KeyVals = get_key_vals(Node)
-        local Result = { }
-        for _, Rec in ipairs(KeyVals) do
-          if is_table(Rec.value) then
-            add_to_list(Result, Rec)
+      function(me, node)
+        local also_visit_keys = me.also_visit_keys
+        local key_vals = get_key_vals(node)
+        local result = { }
+        for _, rec in ipairs(key_vals) do
+          if is_table(rec.value) then
+            add_to_list(result, rec)
           end
-          if also_visit_keys and is_table(Rec.key) then
-            add_to_list(Result, { key = Rec.key, value = Rec.key })
+          if also_visit_keys and is_table(rec.key) then
+            add_to_list(result, { key = rec.key, value = rec.key })
           end
         end
-        tbl_sort(Result, compare_keys)
-        return Result
+        tbl_sort(result, compare_keys)
+        return result
       end
   end
 package.preload['workshop.mechs.graph.dfs.interface'] =
@@ -3050,115 +2988,12 @@ package.preload['workshop.mechs.graph.dfs.interface'] =
         nodes_status = { },
       }
   end
-package.preload['workshop.mechs.parser.get_struc'] =
-  function(...)
-    local c_folder = request('folder.interface')
-    return
-      function(marks)
-        local folder = new(c_folder)
-        folder:init(marks)
-        folder:fold()
-        return folder:get_struc()
-      end
-  end
-package.preload['workshop.mechs.parser.handy'] =
-  function(...)
-    local spawn_match_function =
-      function(pattern)
-        assert_string(pattern)
-        assert(pattern ~= '')
-        if (pattern:sub(1, 1) ~= '^') then
-          pattern = '^' .. pattern
-        end
-        return
-          function(stream)
-            return stream:match_regexp(pattern)
-          end
-      end
-    local any_char =
-      function(stream)
-        return stream:block_read(1)
-      end
-    return { match_regexp = spawn_match_function, any_char = any_char }
-  end
-package.preload['workshop.mechs.parser.parse'] =
-  function(...)
-    local OutputSequence = request('!.mechs.streams.sequence.interface')
-    local DataProcessor = request('!.mechs.processor.core.interface')
-    local on_match =
-      function(Input, Output, name, init_pos)
-        local length = Input:get_position() - init_pos
-        if (length == 0) then
-          return
-        end
-        Output:write({ type = name, start = init_pos, len = length })
-      end
-    local get_struc = request('get_struc')
-    local populate = request('populate')
-    return
-      function(Input, Grammar)
-        assert_table(Input)
-        assert(
-          is_table(Grammar) or
-          is_string(Grammar) or
-          is_function(Grammar)
-        )
-        local Output = new(OutputSequence)
-        Output:init({ })
-        local Processor = new(DataProcessor)
-        Processor.input_stream = Input
-        Processor.output_stream = Output
-        Processor.on_match = on_match
-        Processor:init()
-        local is_parsed = Processor:match(Grammar)
-        local Data = get_struc(Output.seq)
-        populate(Data, Input)
-        return is_parsed, Data
-      end
-  end
-package.preload['workshop.mechs.parser.populate'] =
-  function(...)
-    return
-      function(Node, Input)
-        local populate_leaves
-        populate_leaves =
-          function(Node)
-            if not is_table(Node) then
-              return
-            end
-            if (#Node == 0) then
-              Node[1] = Input:get_segment(Node.start, Node.len)
-            else
-              for _, Subnode in ipairs(Node) do
-                populate_leaves(Subnode)
-              end
-            end
-          end
-        local strip_segments
-        strip_segments =
-          function(Node)
-            if not is_table(Node) then
-              return
-            end
-            Node.start = nil
-            Node.len = nil
-            for _, Subnode in ipairs(Node) do
-              strip_segments(Subnode)
-            end
-          end
-        populate_leaves(Node)
-        strip_segments(Node)
-      end
-  end
-package.preload['workshop.mechs.parser.folder.fold'] =
+package.preload['workshop.mechs.parser.fold'] =
   function(...)
     local is_inside = request('!.mechs.geometry.1d.segments.is_inside')
+    local add_to_list = request('!.concepts.list.add_item')
     return
-      function(self)
-        if self.is_folded then
-          return
-        end
-        local struc = self.struc
+      function(struc)
         if (#struc >= 2) then
           local src_idx = 2
           local dest_idx = 1
@@ -3183,7 +3018,7 @@ package.preload['workshop.mechs.parser.folder.fold'] =
                 }
               local copy_idx = start_idx
               for i = start_idx, dest_idx do
-                dest_table[#dest_table + 1] = result[i]
+                add_to_list(dest_table, result[i])
               end
               result[start_idx] = dest_table
               dest_idx = start_idx
@@ -3198,51 +3033,163 @@ package.preload['workshop.mechs.parser.folder.fold'] =
           struc = result
         end
         if (#struc == 1) then
-          self.struc = struc[1]
-        else
-          self.struc = struc
+          struc = struc[1]
         end
-        self.is_folded = true
+        return struc
       end
   end
-package.preload['workshop.mechs.parser.folder.get_struc'] =
+package.preload['workshop.mechs.parser.handy'] =
   function(...)
+    local spawn_match_function
+    do
+      local start_regexp = '^'
+      local starts_with = request('!.string.starts_with')
+      spawn_match_function =
+        function(pattern)
+          assert_string(pattern)
+          assert(pattern ~= '')
+          if not starts_with(pattern, start_regexp) then
+            pattern = start_regexp .. pattern
+          end
+          return
+            function(stream)
+              return stream:match_regexp(pattern)
+            end
+        end
+    end
+    local any_char =
+      function(stream)
+        return stream:block_read(1)
+      end
+    return { match_regexp = spawn_match_function, any_char = any_char }
+  end
+package.preload['workshop.mechs.parser.parse'] =
+  function(...)
+    local output_seq = request('!.mechs.streams.sequence.interface')
+    local data_processor = request('!.mechs.processor')
+    local on_match =
+      function(input, output, name, init_pos)
+        local length = input:get_position() - init_pos
+        if (length == 0) then
+          return
+        end
+        output:write({ type = name, start = init_pos, len = length })
+      end
+    local fold = request('fold')
+    local populate = request('populate')
     return
-      function(self)
-        return self.struc
+      function(input, grammar)
+        assert_table(input)
+        assert(
+          is_table(grammar) or
+          is_string(grammar) or
+          is_function(grammar)
+        )
+        local output = new(output_seq)
+        output:init({ })
+        local processor = data_processor.create(input, output, on_match)
+        local is_parsed = processor:match(grammar)
+        local data = fold(output.seq)
+        populate(data, input)
+        return is_parsed, data
       end
   end
-package.preload['workshop.mechs.parser.folder.init'] =
+package.preload['workshop.mechs.parser.populate'] =
   function(...)
     return
-      function(self, struc)
-        assert_table(struc)
-        self.struc = struc
-        self.is_folded = false
+      function(node, input)
+        local populate_leaves
+        populate_leaves =
+          function(node)
+            if not is_table(node) then
+              return
+            end
+            if (#node == 0) then
+              node[1] = input:get_segment(node.start, node.len)
+            else
+              for _, subnode in ipairs(node) do
+                populate_leaves(subnode)
+              end
+            end
+          end
+        local strip_segments
+        strip_segments =
+          function(node)
+            if not is_table(node) then
+              return
+            end
+            node.start = nil
+            node.len = nil
+            for _, subnode in ipairs(node) do
+              strip_segments(subnode)
+            end
+          end
+        populate_leaves(node)
+        strip_segments(node)
       end
-  end
-package.preload['workshop.mechs.parser.folder.interface'] =
-  function(...)
-    return
-      {
-        init = request('init'),
-        fold = request('fold'),
-        get_struc = request('get_struc'),
-        struc = nil,
-        is_folded = nil,
-      }
   end
 package.preload['workshop.mechs.processor.handy'] =
   function(...)
+    local cho =
+      function(...)
+        local result = { ... }
+        result.mode_choice = true
+        return result
+      end
+    local rep =
+      function(...)
+        local result = { ... }
+        result.f_rep = true
+        return result
+      end
+    local opt =
+      function(...)
+        local result = { ... }
+        result.op = 'opt'
+        return result
+      end
+    local is_not =
+      function(...)
+        local result = { ... }
+        result.op = 'neg'
+        return result
+      end
+    local opt_rep =
+      function(...)
+        local result = { ... }
+        result.op = 'opt'
+        result.f_rep = true
+        return result
+      end
+    local list =
+      function(...)
+        local body = { ... }
+        assert(#body >= 2)
+        local delimiter = body[#body]
+        body[#body] = nil
+        return { body, opt_rep(delimiter, body) }
+      end
+    local interleave
+    do
+      local tbl_insert = table.insert
+      interleave =
+        function(t, delimiter)
+          assert_table(t)
+          for i = #t, 2, -1 do
+            tab_insert(t, i, delimiter)
+          end
+          return t
+        end
+    end
     return
       {
-        cho = request('handy.set_cho'),
-        opt = request('handy.set_opt'),
-        rep = request('handy.set_rep'),
-        opt_rep = request('handy.set_opt_rep'),
-        is_not = request('handy.set_neg'),
-        list = request('handy.create_list_record'),
-        interleave = request('handy.interleave'),
+        cho = cho,
+        rep = rep,
+        opt = opt,
+        is_not = is_not,
+        opt_rep = opt_rep,
+        list = list,
+        interleave = interleave,
       }
   end
 package.preload['workshop.mechs.processor.link'] =
@@ -3250,7 +3197,7 @@ package.preload['workshop.mechs.processor.link'] =
     local pass_graph = request('!.mechs.graph.dfs')
     local is_producer =
       function(node)
-        return node.inner_name
+        return is_string(node.inner_name)
       end
     local ref_pattern = '^%>(%a[%a%d_]*)$'
     local is_consumer =
@@ -3303,36 +3250,99 @@ package.preload['workshop.mechs.processor.link'] =
       function(node, producers, consumers)
         local producers = producers or { }
         local consumers = consumers or { }
-        pass_graph(
-          node,
-          {
-            handle_discovery =
-              function(node, node_rec, deep)
-                if is_producer(node) then
-                  add_producer(node, producers)
-                end
-                if is_consumer(node) then
-                  add_consumer(node, consumers)
-                end
-              end,
-          }
-        )
+        local handle_discovery =
+          function(node, node_rec, deep)
+            if is_producer(node) then
+              add_producer(node, producers)
+            end
+            if is_consumer(node) then
+              add_consumer(node, consumers)
+            end
+          end
+        local handle_leave =
+          function(node, node_rec, deep)
+            if node.inner_name then
+              node.inner_name = nil
+            end
+          end
+        pass_graph(node, { handle_discovery = handle_discovery })
         for k, v in pairs(consumers) do
           if resolve_links(v, producers) then
             consumers[k] = nil
           end
         end
-        pass_graph(
-          node,
-          {
-            handle_leave =
-              function(node, node_rec, deep)
-                if node.inner_name then
-                  node.inner_name = nil
-                end
-              end,
-          }
-        )
+        pass_graph(node, { handle_leave = handle_leave })
+      end
+  end
+package.preload['workshop.mechs.processor.match'] =
+  function(...)
+    return
+      function(me, rule)
+        local rule_type = type(rule)
+        if (rule_type == 'string') then
+          return me[1]:match_string(rule)
+        elseif (rule_type == 'function') then
+          return rule(me[1], me[2])
+        elseif (rule_type == 'table') then
+          local op_neg = (rule.op == 'neg')
+          local op_opt = (rule.op == 'opt')
+          local f_rep = rule.f_rep
+          if f_rep and op_neg then
+            f_rep = nil
+          end
+          local rule_name = rule.name
+          local result
+          local repeat_result
+          local mode_choice = rule.mode_choice
+          local mode_seq = not mode_choice
+          local input_stream = me[1]
+          local output_stream = me[2]
+          ::restart::
+          local round_in_stream_pos = input_stream:get_position()
+          local round_out_stream_pos = output_stream:get_position()
+          if mode_seq then
+            result = true
+            for i = 1, #rule do
+              if not me:match(rule[i]) then
+                result = false
+                break
+              end
+            end
+          else
+            result = false
+            for i = 1, #rule do
+              if me:match(rule[i]) then
+                result = true
+                break
+              end
+            end
+          end
+          if not result then
+            input_stream:set_position(round_in_stream_pos)
+            output_stream:set_position(round_out_stream_pos)
+          elseif rule_name then
+            me[3](
+              input_stream,
+              output_stream,
+              rule_name,
+              round_in_stream_pos
+            )
+          end
+          if f_rep then
+            if result then
+              repeat_result = true
+              goto restart
+            else
+              result = repeat_result
+            end
+          end
+          if op_opt then
+            result = true
+          elseif op_neg then
+            result = not result
+          end
+          return result
+        end
       end
   end
 package.preload['workshop.mechs.processor.optimize'] =
@@ -3367,6 +3377,8 @@ package.preload['workshop.mechs.processor.optimize'] =
       function(mode_a, mode_b)
         return (not mode_a and not mode_b) or (mode_a == mode_b)
       end
+    local tbl_remove = table.remove
+    local tbl_insert = table.insert
     return
       function(grammar)
         local embed =
@@ -3374,9 +3386,9 @@ package.preload['workshop.mechs.processor.optimize'] =
             parent.name = parent.name or node.name
             parent.op = parent.op or node.op
             parent.f_rep = parent.f_rep or node.f_rep
-            table.remove(parent, child_key)
+            tbl_remove(parent, child_key)
             for j = #node, 1, -1 do
-              table.insert(parent, child_key, node[j])
+              tbl_insert(parent, child_key, node[j])
             end
           end
         ::restart::
@@ -3417,175 +3429,6 @@ package.preload['workshop.mechs.processor.optimize'] =
             end
           end
         end
-      end
-  end
-package.preload['workshop.mechs.processor.core.init'] =
-  function(...)
-    local assert_is_stream = request('!.mechs.streams.assert_is_stream')
-    return
-      function(self)
-        assert_is_stream(self.input_stream)
-        assert_is_stream(self.output_stream)
-      end
-  end
-package.preload['workshop.mechs.processor.core.interface'] =
-  function(...)
-    return
-      {
-        input_stream = nil,
-        output_stream = nil,
-        on_match = request('on_match'),
-        init = request('init'),
-        match = request('match'),
-      }
-  end
-package.preload['workshop.mechs.processor.core.match'] =
-  function(...)
-    return
-      function(self, rule)
-        local rule_type = type(rule)
-        if (rule_type == 'string') then
-          return self.input_stream:match_string(rule)
-        elseif (rule_type == 'function') then
-          return rule(self.input_stream, self.output_stream)
-        elseif (rule_type == 'table') then
-          local op_neg = (rule.op == 'neg')
-          local op_opt = (rule.op == 'opt')
-          local f_rep = rule.f_rep
-          if f_rep and op_neg then
-            f_rep = nil
-          end
-          local rule_name = rule.name
-          local result
-          local repeat_result
-          local mode_choice = rule.mode_choice
-          local mode_seq = not mode_choice
-          local input_stream = self.input_stream
-          local output_stream = self.output_stream
-          ::restart::
-          local round_in_stream_pos = input_stream:get_position()
-          local round_out_stream_pos = output_stream:get_position()
-          if mode_seq then
-            result = true
-            for i = 1, #rule do
-              if not self:match(rule[i]) then
-                result = false
-                break
-              end
-            end
-          else
-            result = false
-            for i = 1, #rule do
-              if self:match(rule[i]) then
-                result = true
-                break
-              end
-            end
-          end
-          if not result then
-            input_stream:set_position(round_in_stream_pos)
-            output_stream:set_position(round_out_stream_pos)
-          elseif rule_name then
-            self.on_match(
-              input_stream,
-              output_stream,
-              rule_name,
-              round_in_stream_pos
-            )
-          end
-          if f_rep then
-            if result then
-              repeat_result = true
-              goto restart
-            else
-              result = repeat_result
-            end
-          end
-          if op_opt then
-            result = true
-          elseif op_neg then
-            result = not result
-          end
-          return result
-        end
-      end
-  end
-package.preload['workshop.mechs.processor.core.on_match'] =
-  function(...)
-    return
-      function(
-        input_stream, output_stream, rule, init_input_stream_position
-      )
-        error('Virtual method. Should be overriden.')
-      end
-  end
-package.preload['workshop.mechs.processor.handy.create_list_record'] =
-  function(...)
-    local set_opt_rep = request('set_opt_rep')
-    return
-      function(...)
-        local body = { ... }
-        assert(#body >= 2)
-        local delimiter = body[#body]
-        body[#body] = nil
-        return { body, set_opt_rep(delimiter, body) }
-      end
-  end
-package.preload['workshop.mechs.processor.handy.interleave'] =
-  function(...)
-    return
-      function(t, delimiter)
-        assert_table(t)
-        for i = #t, 2, -1 do
-          table.insert(t, i, delimiter)
-        end
-        return t
-      end
-  end
-package.preload['workshop.mechs.processor.handy.set_cho'] =
-  function(...)
-    return
-      function(...)
-        local result = { ... }
-        result.mode_choice = true
-        return result
-      end
-  end
-package.preload['workshop.mechs.processor.handy.set_neg'] =
-  function(...)
-    return
-      function(...)
-        local result = { ... }
-        result.op = 'neg'
-        return result
-      end
-  end
-package.preload['workshop.mechs.processor.handy.set_opt'] =
-  function(...)
-    return
-      function(...)
-        local result = { ... }
-        result.op = 'opt'
-        return result
-      end
-  end
-package.preload['workshop.mechs.processor.handy.set_opt_rep'] =
-  function(...)
-    return
-      function(...)
-        local result = { ... }
-        result.op = 'opt'
-        result.f_rep = true
-        return result
-      end
-  end
-package.preload['workshop.mechs.processor.handy.set_rep'] =
-  function(...)
-    return
-      function(...)
-        local result = { ... }
-        result.f_rep = true
-        return result
       end
   end
 package.preload['workshop.mechs.streams.assert_is_stream'] =
@@ -3696,9 +3539,9 @@ package.preload['workshop.mechs.streams.mergeable.string.init'] =
 package.preload['workshop.mechs.streams.mergeable.string.interface'] =
   function(...)
     local force_merge = request('!.table.merge_and_patch')
-    local BaseInterface = new(request('^.interface'))
-    local original_init = BaseInterface.init
-    local Overrides =
+    local base_interface = request('^.interface')
+    local original_init = base_interface.init
+    local overrides =
       {
         init = request('init'),
         get_position = request('get_position'),
@@ -3711,9 +3554,9 @@ package.preload['workshop.mechs.streams.mergeable.string.interface'] =
         position = nil,
         original_init = original_init,
       }
-    local Interface = new(BaseInterface)
-    force_merge(Interface, Overrides)
-    return Interface
+    local interface = new(base_interface)
+    force_merge(interface, overrides)
+    return interface
   end
 package.preload['workshop.mechs.streams.mergeable.string.match_regexp'] =
   function(...)
@@ -3831,6 +3674,19 @@ package.preload['workshop.mechs.streams.sequence.write'] =
         self.position = self.position + 1
       end
   end
+package.preload['workshop.number.constrain'] =
+  function(...)
+    return
+      function(num, min, max)
+        if (num < min) then
+          return min
+        end
+        if (num > max) then
+          return max
+        end
+        return num
+      end
+  end
 package.preload['workshop.string.starts_with'] =
   function(...)
     local str_sub = string.sub
@@ -3841,16 +3697,16 @@ package.preload['workshop.string.starts_with'] =
   end
 package.preload['workshop.string.trim_tail'] =
   function(...)
-    local trim_tail =
+    local str_sub = string.sub
+    local space = request('!.concepts.ascii.chars').space
+    return
       function(str)
-        assert_string(str)
-        local read_pos = string.len(str)
-        while (string.sub(str, read_pos, read_pos) == ' ') do
+        local read_pos = #str
+        while (str_sub(str, read_pos, read_pos) == space) do
           read_pos = read_pos - 1
         end
-        return string.sub(str, 1, read_pos)
+        return str_sub(str, 1, read_pos)
       end
-    return trim_tail
   end
 package.preload['workshop.system.install_assert_functions'] =
   function(...)
@@ -3871,14 +3727,15 @@ package.preload['workshop.system.install_assert_functions'] =
             end
         end
     end
-    local TypeNames = request('!.concepts.lua.TypeNames')
-    local NumberTypeNames = request('!.concepts.lua.NumberTypeNames')
+    local type_names = request('!.concepts.lua.type_names')
+    local number_type_names =
+      request('!.concepts.lua.number_type_names')
     local install_assert_funcs =
       function()
-        for _, type_name in ipairs(TypeNames) do
+        for _, type_name in ipairs(type_names) do
           _G['assert_' .. type_name] = spawn_assert_func(type_name)
         end
-        for _, number_type_name in ipairs(NumberTypeNames) do
+        for _, number_type_name in ipairs(number_type_names) do
           _G['assert_' .. number_type_name] =
             spawn_assert_func(number_type_name)
         end
@@ -3908,182 +3765,178 @@ package.preload['workshop.system.install_is_functions'] =
             end
         end
     end
-    local TypeNames = request('!.concepts.lua.TypeNames')
-    local NumberTypeNames = request('!.concepts.lua.NumberTypeNames')
+    local type_names = request('!.concepts.lua.type_names')
+    local number_type_names =
+      request('!.concepts.lua.number_type_names')
     return
       function()
-        for _, type_name in ipairs(TypeNames) do
+        for _, type_name in ipairs(type_names) do
           _G['is_' .. type_name] = type_is(type_name)
         end
-        for _, number_type_name in ipairs(NumberTypeNames) do
+        for _, number_type_name in ipairs(number_type_names) do
           _G['is_' .. number_type_name] = number_is(number_type_name)
         end
       end
   end
 package.preload['workshop.table.apply_table'] =
   function(...)
-    local keep_str = 'keep'
     local replace_str = 'replace'
     local remove_str = 'remove'
-    local get_action =
-      function(has_a, has_b, Rules)
-        for _, Rule in ipairs(Rules) do
-          if (Rule.has_a == has_a) and (Rule.has_b == has_b) then
-            return Rule.action
-          end
+    local assert_rule =
+      function(rule)
+        local action = rule[3]
+        if
+          is_boolean(rule[1]) and
+          is_boolean(rule[2]) and
+          ((action == replace_str) or (action == remove_str))
+        then
+          return
         end
-        return keep_str
+        error('Unsupported rule.')
       end
     local apply_table
     apply_table =
-      function(A, B, Rules)
-        local Keys = { }
+      function(a, b, rule)
+        local keys = { }
         do
-          for a_key in pairs(A) do
-            Keys[a_key] = true
+          for a_key in pairs(a) do
+            keys[a_key] = true
           end
-          for b_key in pairs(B) do
-            Keys[b_key] = true
+          for b_key in pairs(b) do
+            keys[b_key] = true
           end
         end
-        for key in pairs(Keys) do
-          local a_key = A[key]
-          local b_key = B[key]
+        for key in pairs(keys) do
+          local a_key = a[key]
+          local b_key = b[key]
           if is_table(a_key) and is_table(b_key) then
-            apply_table(a_key, b_key, Rules)
+            apply_table(a_key, b_key, rule)
           else
             local has_a = not is_nil(a_key)
             local has_b = not is_nil(b_key)
-            local action = get_action(has_a, has_b, Rules)
-            if (action == keep_str) then
-              ;
-            elseif (action == replace_str) then
-              A[key] = B[key]
+            local action
+            if (rule[1] == has_a) and (rule[2] == has_b) then
+              action = rule[3]
+            end
+            if (action == replace_str) then
+              a[key] = b[key]
             elseif (action == remove_str) then
-              A[key] = nil
+              a[key] = nil
             end
           end
         end
       end
-    local check_rule =
-      function(Rule)
-        local has_a = is_boolean(Rule.has_a)
-        local has_b = is_boolean(Rule.has_b)
-        local action = Rule.action
-        local is_known_action =
-          (action == keep_str) or
-          (action == replace_str) or
-          (action == remove_str)
-        return has_a and has_b and is_known_action
-      end
     return
-      function(A, B, Rules)
-        assert_table(A)
-        assert_table(B)
-        assert_table(Rules)
-        assert(A ~= B)
-        for index, Rule in ipairs(Rules) do
-          if not check_rule(Rule) then
-            error('Unsupported rule.')
-          end
-        end
-        apply_table(A, B, Rules)
+      function(a, b, rule)
+        assert_table(a)
+        assert_table(b)
+        assert_table(rule)
+        assert_rule(rule)
+        apply_table(a, b, rule)
       end
   end
 package.preload['workshop.table.attach_methods'] =
   function(...)
     return
-      function(Object, Methods)
-        assert_table(Object)
-        assert_table(Methods)
-        setmetatable(Object, { __index = Methods })
+      function(me, methods)
+        setmetatable(me, { __index = methods })
       end
   end
 package.preload['workshop.table.clone'] =
   function(...)
     return
-      function(Node)
+      function(node)
         local clone
         do
-          local Cloned = { }
+          local cloned = { }
           clone =
-            function(Node)
-              if (type(Node) ~= 'table') then
-                return Node
+            function(node)
+              if (type(node) ~= 'table') then
+                return node
               end
-              if Cloned[Node] then
-                return Cloned[Node]
+              if cloned[node] then
+                return cloned[node]
               end
-              local Result = { }
-              Cloned[Node] = Result
-              for key, value in pairs(Node) do
-                Result[clone(key)] = clone(value)
+              local result = { }
+              cloned[node] = result
+              for key, value in pairs(node) do
+                result[clone(key)] = clone(value)
               end
-              setmetatable(Result, getmetatable(Node))
-              return Result
+              setmetatable(result, getmetatable(node))
+              return result
             end
         end
-        return clone(Node)
+        return clone(node)
       end
   end
 package.preload['workshop.table.get_key_vals'] =
   function(...)
     local add_to_list = request('!.concepts.list.add_item')
     return
-      function(Table)
-        assert_table(Table)
-        local KeyVals = { }
-        for key, value in pairs(Table) do
-          add_to_list(KeyVals, { key = key, value = value })
+      function(table)
+        assert_table(table)
+        local key_vals = { }
+        for key, value in pairs(table) do
+          add_to_list(key_vals, { key = key, value = value })
         end
-        return KeyVals
+        return key_vals
+      end
+  end
+package.preload['workshop.table.intersect'] =
+  function(...)
+    local rule = { true, false, 'remove' }
+    local apply_table = request('apply_table')
+    return
+      function(a, b)
+        apply_table(a, b, rule)
       end
   end
 package.preload['workshop.table.map_values'] =
   function(...)
     return
-      function(List)
-        assert_table(List)
-        local Result = { }
-        for _, value in pairs(List) do
-          Result[value] = true
+      function(table)
+        assert_table(table)
+        local map = { }
+        for _, value in pairs(table) do
+          map[value] = true
         end
-        return Result
+        return map
       end
   end
 package.preload['workshop.table.merge'] =
   function(...)
-    local Rules =
-      { { has_a = false, has_b = true, action = 'replace' } }
+    local rule = { false, true, 'replace' }
     local apply_table = request('apply_table')
     return
-      function(Result, Additions)
-        apply_table(Result, Additions, Rules)
+      function(result, additions)
+        apply_table(result, additions, rule)
       end
   end
 package.preload['workshop.table.merge_and_patch'] =
   function(...)
     local merge = request('merge')
     local patch = request('patch')
-    local merge_and_patch =
-      function(Dest, Source)
-        merge(Dest, Source)
-        patch(Dest, Source)
+    return
+      function(dest, additions)
+        if not additions then
+          return
+        end
+        merge(dest, additions)
+        patch(dest, additions)
       end
-    return merge_and_patch
   end
 package.preload['workshop.table.new'] =
   function(...)
     local clone = request('clone')
     local patch = request('patch')
     return
-      function(Base, Overrides)
-        assert_table(Base)
-        local Result = clone(Base)
-        if is_table(Overrides) then
-          patch(Result, Overrides)
+      function(base, overrides)
+        assert_table(base)
+        local result = clone(base)
+        if overrides then
+          patch(result, overrides)
         end
-        return Result
+        return result
       end
   end
 package.preload['workshop.table.ordered_pass'] =
@@ -4092,74 +3945,74 @@ package.preload['workshop.table.ordered_pass'] =
     local get_key_vals = request('get_key_vals')
     local tbl_sort = table.sort
     return
-      function(Table, comparator)
-        assert_table(Table)
+      function(table, comparator)
+        assert_table(table)
         comparator = comparator or keys_comparator
         assert_function(comparator)
-        local KeyVals = get_key_vals(Table)
-        tbl_sort(KeyVals, comparator)
+        local key_vals = get_key_vals(table)
+        tbl_sort(key_vals, comparator)
         local i = 0
         local get_next =
           function()
             i = i + 1
-            if KeyVals[i] then
-              return KeyVals[i].key, KeyVals[i].value
+            local rec = key_vals[i]
+            if not rec then
+              return
             end
+            return rec.key, rec.value
           end
-        return get_next, Table
+        return get_next, table
       end
   end
 package.preload['workshop.table.patch'] =
   function(...)
-    local Rules = { { has_a = true, has_b = true, action = 'replace' } }
+    local rule = { true, true, 'replace' }
     local apply_table = request('apply_table')
     return
-      function(Result, Additions)
-        apply_table(Result, Additions, Rules)
+      function(result, patch)
+        apply_table(result, patch, rule)
       end
   end
 package.preload['workshop.table.replace'] =
   function(...)
-    local Rules =
-      {
-        { has_a = true, has_b = true, action = 'replace' },
-        { has_a = false, has_b = true, action = 'replace' },
-        { has_a = true, has_b = false, action = 'remove' },
-      }
-    local apply_table = request('apply_table')
+    local patch = request('patch')
+    local intersect = request('intersect')
+    local merge = request('merge')
     return
-      function(Dest, Src)
-        apply_table(Dest, Src, Rules)
+      function(origin, replacement)
+        intersect(origin, replacement)
+        patch(origin, replacement)
+        merge(origin, replacement)
       end
   end
 package.preload['workshop.table.ordered_pass.compare_keys'] =
   function(...)
     local compare_values = request('compare_values')
     return
-      function(A, B)
-        return compare_values(A.key, B.key)
+      function(a, b)
+        return compare_values(a.key, b.key)
       end
   end
 package.preload['workshop.table.ordered_pass.compare_values'] =
   function(...)
-    local TypeRank_Map = { ['string'] = 1, ['number'] = 2 }
+    local type_rank = { ['string'] = 1, ['number'] = 2 }
     local rank_other = 3
-    local ComparableTypes_Map = { ['string'] = true, ['number'] = true }
+    local is_comparable_type = { ['string'] = true, ['number'] = true }
     return
       function(a, b)
         local type_a = type(a)
-        local rank_a = TypeRank_Map[type_a] or rank_other
+        local rank_a = type_rank[type_a] or rank_other
         local type_b = type(b)
-        local rank_b = TypeRank_Map[type_b] or rank_other
+        local rank_b = type_rank[type_b] or rank_other
         if (rank_a ~= rank_b) then
           return (rank_a < rank_b)
         end
         if
-          ComparableTypes_Map[type_a] and ComparableTypes_Map[type_b]
+          is_comparable_type[type_a] and is_comparable_type[type_b]
         then
           return (a < b)
         end
         return (tostring(a) < tostring(b))
       end
   end
-return require('reformat_lua')
+return require('reformat')
