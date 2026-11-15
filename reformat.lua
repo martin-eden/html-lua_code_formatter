@@ -5,9 +5,8 @@ package.preload['reformat'] =
   end
 package.preload['workshop.base'] =
   function(...)
-    local set_base_prefix
     local split_name
-    local get_base_prefix
+    local base_prefix
     local request
     local stack_init
     local stack_add
@@ -84,17 +83,6 @@ package.preload['workshop.base'] =
             return base_prefix .. rel_prefix
           end
       end
-      do
-        local base_prefix
-        set_base_prefix =
-          function(arg_base_prefix)
-            base_prefix = arg_base_prefix
-          end
-        get_base_prefix =
-          function()
-            return base_prefix
-          end
-      end
       local get_require_name =
         function(qualified_name)
           local caller_prefix
@@ -102,7 +90,7 @@ package.preload['workshop.base'] =
             (str_sub(qualified_name, 1, 2) == '!.')
           if is_absolute_name then
             qualified_name = str_sub(qualified_name, 3)
-            caller_prefix = get_base_prefix()
+            caller_prefix = base_prefix
           else
             caller_prefix = get_caller_prefix()
           end
@@ -121,9 +109,8 @@ package.preload['workshop.base'] =
     end
     do
       local our_require_name = (...)
-      set_base_prefix(split_name(our_require_name))
+      base_prefix = split_name(our_require_name)
       _G['request'] = request
-      _G['get_base_prefix'] = get_base_prefix
       stack_init()
       stack_add(empty, our_require_name)
       request('!.system.install_is_functions')()
@@ -229,18 +216,17 @@ package.preload['workshop.concepts.range_point'] =
   end
 package.preload['workshop.concepts.text_block'] =
   function(...)
+    local newline = request('!.concepts.ascii.chars').newline
     local flush
     do
-      local trim = request('!.string.trim_tail')
-      local add_to_list = request('!.concepts.list.add_item')
+      local rtrim = request('!.string.trim_tail')
+      local str_rep = string.rep
       flush =
         function(me)
-          add_to_list(me[6], trim(me[1]))
-          for _ = 2, me[2] do
-            add_to_list(me[6], '')
-          end
-          me[2] = 0
+          me[5]:write(rtrim(me[1]))
+          me[5]:write(str_rep(newline, me[2]))
           me[1] = ''
+          me[2] = 0
         end
     end
     local add_to_textline
@@ -250,6 +236,9 @@ package.preload['workshop.concepts.text_block'] =
       local max = math.max
       add_to_textline =
         function(me, str)
+          if (str == '') then
+            return
+          end
           if (me[1] == '') then
             me[1] = me[3]:to_string()
           end
@@ -297,19 +286,17 @@ package.preload['workshop.concepts.text_block'] =
       function(me)
         me[3]:dec()
       end
-    local get_text
-    do
-      local lines_to_str = request('!.convert.lines_to_str')
-      get_text =
-        function(me)
-          flush(me)
-          return lines_to_str(me[6])
-        end
-    end
-    local exceeds_margin =
+    local get_text =
       function(me)
-        return (me[4] > me[5])
+        flush(me)
+        return me[5]:get_string()
       end
+    local get_width =
+      function(me)
+        return me[4]
+      end
+    local string_output_class =
+      request('!.concepts.streams.output.string')
     local seed
     do
       local utf8_len = utf8.len
@@ -321,8 +308,7 @@ package.preload['workshop.concepts.text_block'] =
               [2] = me[2],
               [3] = new(me[3]),
               [4] = 0,
-              [5] = me[5],
-              [6] = { },
+              [5] = string_output_class.create(),
             }
           setmetatable(another_me, getmetatable(me))
           return another_me
@@ -330,14 +316,13 @@ package.preload['workshop.concepts.text_block'] =
     end
     local graft
     do
-      local add_list = request('!.concepts.list.add_list')
       local max = math.max
       graft =
         function(me, another_me)
           me[1] = another_me[1]
           me[2] = another_me[2]
           me[4] = max(me[4], another_me[4])
-          add_list(me[6], another_me[6])
+          me[5]:write(another_me[5]:get_string())
         end
     end
     local interface
@@ -348,19 +333,15 @@ package.preload['workshop.concepts.text_block'] =
       local max_indent = 100
       local attach_methods = request('!.table.attach_methods')
       create =
-        function(indent_chunk, margin)
+        function(indent_chunk)
           assert_string(indent_chunk)
-          assert_number(margin)
-          local indent =
-            indent.create(indent_chunk, min_indent, max_indent)
           local me =
             {
               [1] = '',
               [2] = 0,
-              [3] = indent,
+              [3] = indent.create(indent_chunk, min_indent, max_indent),
               [4] = 0,
-              [5] = margin,
-              [6] = { },
+              [5] = string_output_class.create(),
             }
           attach_methods(me, interface)
           return me
@@ -378,7 +359,7 @@ package.preload['workshop.concepts.text_block'] =
         inc_indent = inc_indent,
         dec_indent = dec_indent,
         get_text = get_text,
-        exceeds_margin = exceeds_margin,
+        get_width = get_width,
         seed = seed,
         graft = graft,
       }
@@ -447,15 +428,6 @@ package.preload['workshop.concepts.list.add_item'] =
     return
       function(OurList, item)
         tbl_insert(OurList, item)
-      end
-  end
-package.preload['workshop.concepts.list.add_list'] =
-  function(...)
-    local tbl_move = table.move
-    return
-      function(OurList, AnotherList)
-        assert(OurList ~= AnotherList)
-        tbl_move(AnotherList, 1, #AnotherList, #OurList + 1, OurList)
       end
   end
 package.preload['workshop.concepts.list.to_string'] =
@@ -1130,12 +1102,12 @@ package.preload['workshop.concepts.lua.formatter.interface'] =
           do
             local indent_chunk =
               options.indent_chunk or default_indent_chunk
-            local right_margin =
-              options.right_margin or default_right_margin
-            printer = text_block.create(indent_chunk, right_margin)
+            printer = text_block.create(indent_chunk)
           end
+          local right_margin =
+            options.right_margin or default_right_margin
           local state_keeper = state_keeper_class.create()
-          local me = { printer, state_keeper }
+          local me = { printer, right_margin, state_keeper }
           attach_methods(me, interface)
           return me
         end
@@ -1346,7 +1318,8 @@ package.preload['workshop.concepts.lua.formatter.variate'] =
     return
       function(me, node, oneliner, multiliner)
         local printer = me[1]
-        local state_keeper = me[2]
+        local margin = me[2]
+        local state_keeper = me[3]
         state_keeper:next_level()
         local our_state = state_keeper:get_state() or default_state
         local is_multiline_allowed = our_state.is_multiline_allowed
@@ -1370,7 +1343,7 @@ package.preload['workshop.concepts.lua.formatter.variate'] =
             local trial, has_failed = me:represent(representer, node)
             if
               representer_is_last_hope or
-              (not has_failed and not trial:exceeds_margin())
+              (not has_failed and (trial:get_width() <= margin))
             then
               return trial
             end
@@ -2700,6 +2673,7 @@ package.preload['workshop.concepts.lua.tokens_syntax.syntel'] =
           end
         end
       end
+    local charset = request('!.lua.regexp.charset')
     local match_regexp = request('!.mechs.parser.handy').match_regexp
     local cho = request('!.mechs.processor.handy').cho
     return
@@ -2717,7 +2691,33 @@ package.preload['workshop.concepts.lua.tokens_syntax.syntel'] =
           '//',
           '::',
           match_regexp(
-            '[%=%~%<%>%.%:%,%;%/%(%)%[%]%{%}%-%+%#%*%%%^%&%|]'
+            charset(
+              {
+                ';',
+                '=',
+                ',',
+                '.',
+                ':',
+                '-',
+                '#',
+                '~',
+                '+',
+                '*',
+                '/',
+                '%',
+                '&',
+                '|',
+                '^',
+                '(',
+                ')',
+                '[',
+                ']',
+                '<',
+                '>',
+                '{',
+                '}',
+              }
+            )
           )
         ),
       }
@@ -2759,14 +2759,39 @@ package.preload['workshop.concepts.shell.split_shebang'] =
         return shebang_str, rest_str
       end
   end
-package.preload['workshop.convert.lines_to_str'] =
+package.preload['workshop.concepts.streams.output.string'] =
   function(...)
-    local list_to_string = request('!.concepts.list.to_string')
-    local newline = request('!.concepts.ascii.chars').newline
-    return
-      function(lines)
-        return list_to_string(lines, newline) .. newline
-      end
+    local write
+    do
+      local add_to = request('!.concepts.list.add_item')
+      write =
+        function(me, data_str)
+          assert_string(data_str)
+          add_to(me, data_str)
+        end
+    end
+    local get_string
+    do
+      local list_to_string = request('!.concepts.list.to_string')
+      get_string =
+        function(me)
+          return list_to_string(me)
+        end
+    end
+    local interface
+    local create
+    do
+      local attach_methods = request('!.table.attach_methods')
+      create =
+        function()
+          local me = { }
+          attach_methods(me, interface)
+          return me
+        end
+    end
+    interface =
+      { create = create, write = write, get_string = get_string }
+    return interface
   end
 package.preload['workshop.lua.reformat_code'] =
   function(...)
@@ -2812,31 +2837,88 @@ package.preload['workshop.lua.reformat_code'] =
         return result_str
       end
   end
+package.preload['workshop.lua.regexp.charset'] =
+  function(...)
+    local list_to_str = request('!.concepts.list.to_string')
+    local defuse = request('!.lua.regexp.quote')
+    local to_charset = request('to_charset')
+    return
+      function(chars)
+        return to_charset(defuse(list_to_str(chars)))
+      end
+  end
+package.preload['workshop.lua.regexp.magic_charset'] =
+  function(...)
+    local defused_magic_chars_str
+    do
+      local ascii = request('!.concepts.ascii.chars')
+      local magic_chars =
+        {
+          ascii.caret,
+          ascii.dollar_sign,
+          ascii.percent,
+          ascii.dot,
+          ascii.question_mark,
+          ascii.asterisk,
+          ascii.plus,
+          ascii.minus,
+          ascii.opening_paren,
+          ascii.closing_paren,
+          ascii.opening_bracket,
+          ascii.closing_bracket,
+        }
+      local list_to_str = request('!.concepts.list.to_string')
+      local str_gsub = string.gsub
+      defused_magic_chars_str =
+        str_gsub(list_to_str(magic_chars), '.', '%%%0')
+    end
+    local to_charset = request('to_charset')
+    return to_charset(defused_magic_chars_str)
+  end
+package.preload['workshop.lua.regexp.quote'] =
+  function(...)
+    local magic_charset = request('magic_charset')
+    local str_gsub = string.gsub
+    return
+      function(str)
+        return str_gsub(str, magic_charset, '%%%0')
+      end
+  end
+package.preload['workshop.lua.regexp.to_charset'] =
+  function(...)
+    return
+      function(str)
+        return '[' .. str .. ']'
+      end
+  end
 package.preload['workshop.mechs.generic_loader'] =
   function(...)
-    local StringInputStream =
+    local string_input_stream =
       request('!.mechs.streams.mergeable.string.interface')
     local parse = request('parser.parse')
     return
-      function(data_str, Syntax, ...)
-        local InputStream = new(StringInputStream)
-        InputStream:init(data_str)
-        local Result
-        local is_parsed, DataStruc = parse(InputStream, Syntax)
-        if is_parsed then
-          Result = DataStruc
-          for i = 1, select('#', ...) do
-            local struc_transformer = select(i, ...)
-            Result = struc_transformer(Result)
+      function(data_str, syntax, ...)
+        local input_stream = new(string_input_stream)
+        input_stream:init(data_str)
+        local result
+        do
+          local is_parsed, data_struc = parse(input_stream, syntax)
+          if is_parsed then
+            result = data_struc
+            for i = 1, select('#', ...) do
+              result = select(i, ...)(result)
+            end
           end
         end
         local unparsed_tail
-        local elems_remained =
-          InputStream:get_length() - InputStream:get_position() + 1
-        if (elems_remained > 0) then
-          unparsed_tail = InputStream:read(elems_remained)
+        do
+          local elems_remained =
+            input_stream:get_length() - input_stream:get_position() + 1
+          if (elems_remained > 0) then
+            unparsed_tail = input_stream:read(elems_remained)
+          end
         end
-        return Result, unparsed_tail
+        return result, unparsed_tail
       end
   end
 package.preload['workshop.mechs.processor'] =
@@ -2845,13 +2927,11 @@ package.preload['workshop.mechs.processor'] =
     local interface
     local create
     do
-      local assert_is_stream =
-        request('!.mechs.streams.assert_is_stream')
       local attach_methods = request('!.table.attach_methods')
       create =
         function(input, output, on_match)
-          assert_is_stream(input)
-          assert_is_stream(output)
+          assert_table(input)
+          assert_table(output)
           assert_function(on_match)
           local me = { input, output, on_match }
           attach_methods(me, interface)
@@ -3086,10 +3166,10 @@ package.preload['workshop.mechs.parser.parse'] =
           is_function(grammar)
         )
         local output = new(output_seq)
-        output:init({ })
+        output:init()
         local processor = data_processor.create(input, output, on_match)
         local is_parsed = processor:match(grammar)
-        local data = fold(output.seq)
+        local data = fold(output:get_values())
         populate(data, input)
         return is_parsed, data
       end
@@ -3132,34 +3212,23 @@ package.preload['workshop.mechs.processor.handy'] =
   function(...)
     local cho =
       function(...)
-        local result = { ... }
-        result.mode_choice = true
-        return result
+        return { mode_choice = true, ... }
       end
     local rep =
       function(...)
-        local result = { ... }
-        result.f_rep = true
-        return result
+        return { f_rep = true, ... }
       end
     local opt =
       function(...)
-        local result = { ... }
-        result.op = 'opt'
-        return result
+        return { op = 'opt', ... }
       end
     local is_not =
       function(...)
-        local result = { ... }
-        result.op = 'neg'
-        return result
+        return { op = 'neg', ... }
       end
     local opt_rep =
       function(...)
-        local result = { ... }
-        result.op = 'opt'
-        result.f_rep = true
-        return result
+        return { op = 'opt', f_rep = true, ... }
       end
     local list =
       function(...)
@@ -3431,248 +3500,169 @@ package.preload['workshop.mechs.processor.optimize'] =
         end
       end
   end
-package.preload['workshop.mechs.streams.assert_is_stream'] =
+package.preload['workshop.mechs.streams.mergeable.interface'] =
   function(...)
-    return
-      function(t)
-        assert_table(t)
-        assert_function(t.get_position)
-        assert_function(t.set_position)
-      end
-  end
-package.preload['workshop.mechs.streams.mergeable.block_read'] =
-  function(...)
-    return
-      function(self, num_positions)
-        local original_position = self:get_position()
-        local result, num_read = self:read(num_positions)
-        if (num_read < num_positions) then
-          self:set_position(original_position)
+    local block_read =
+      function(me, num_slots)
+        local orig_pos = me:get_position()
+        local result, num_read = me:read(num_slots)
+        if (num_read < num_slots) then
+          me:set_position(orig_pos)
           return
         end
         return result
       end
-  end
-package.preload['workshop.mechs.streams.mergeable.get_segment'] =
-  function(...)
-    return
-      function(self, start, len)
-        local init_pos = self:get_position()
-        self:set_position(start)
-        local result = self:block_read(len)
-        self:set_position(init_pos)
+    local get_segment =
+      function(me, start, len)
+        local init_pos = me:get_position()
+        me:set_position(start)
+        local result = block_read(me, len)
+        me:set_position(init_pos)
         return result
       end
-  end
-package.preload['workshop.mechs.streams.mergeable.get_slot'] =
-  function(...)
-    return
-      function(self)
-        local init_pos = self:get_position()
-        local result = self:block_read(1)
-        self:set_position(init_pos)
+    local set_relative_position =
+      function(me, offset)
+        me:set_position(me:get_position() + offset)
+      end
+    local set_next_position =
+      function(me)
+        me:set_position(me:get_position() + 1)
+      end
+    local get_slot =
+      function(me)
+        local init_pos = me:get_position()
+        local result = block_read(me, 1)
+        me:set_position(init_pos)
         return result
       end
-  end
-package.preload['workshop.mechs.streams.mergeable.init'] =
-  function(...)
-    return
-      function(self)
-      end
-  end
-package.preload['workshop.mechs.streams.mergeable.interface'] =
-  function(...)
     return
       {
-        init = request('init'),
+        init = nil,
         get_position = nil,
         set_position = nil,
         read = nil,
         get_length = nil,
-        block_read = request('block_read'),
-        get_segment = request('get_segment'),
-        set_relative_position = request('set_relative_position'),
-        set_next_position = request('set_next_position'),
-        get_slot = request('get_slot'),
+        block_read = block_read,
+        get_segment = get_segment,
+        set_relative_position = set_relative_position,
+        set_next_position = set_next_position,
+        get_slot = get_slot,
       }
-  end
-package.preload['workshop.mechs.streams.mergeable.set_next_position'] =
-  function(...)
-    return
-      function(self)
-        self:set_position(self:get_position() + 1)
-      end
-  end
-package.preload[
-  'workshop.mechs.streams.mergeable.set_relative_position'
-] =
-  function(...)
-    return
-      function(self, position_offset)
-        self:set_position(self:get_position() + position_offset)
-      end
-  end
-package.preload['workshop.mechs.streams.mergeable.string.get_length'] =
-  function(...)
-    return
-      function(self)
-        return #self.s
-      end
-  end
-package.preload['workshop.mechs.streams.mergeable.string.get_position'] =
-  function(...)
-    return
-      function(self)
-        return self.position
-      end
-  end
-package.preload['workshop.mechs.streams.mergeable.string.init'] =
-  function(...)
-    return
-      function(self, s)
-        assert_string(s)
-        self.s = s
-        self.position = 1
-        self:original_init()
-      end
   end
 package.preload['workshop.mechs.streams.mergeable.string.interface'] =
   function(...)
-    local force_merge = request('!.table.merge_and_patch')
-    local base_interface = request('^.interface')
-    local original_init = base_interface.init
+    local init =
+      function(me, str)
+        assert_string(str)
+        me[1] = str
+        me[2] = 1
+      end
+    local get_length =
+      function(me)
+        return #me[1]
+      end
+    local get_position =
+      function(me)
+        return me[2]
+      end
+    local set_position
+    do
+      local constrain = request('!.number.constrain')
+      set_position =
+        function(me, new_position)
+          me[2] = constrain(new_position, 1, #me[1] + 1)
+        end
+    end
+    local str_sub = string.sub
+    local read =
+      function(me, num_slots)
+        local pos = me[2]
+        local result = str_sub(me[1], pos, pos + num_slots - 1)
+        me[2] = pos + #result
+        return result, #result
+      end
+    local match_string =
+      function(me, str)
+        local pos = me[2]
+        local segment = str_sub(me[1], pos, pos + #str - 1)
+        if (segment == str) then
+          me[2] = pos + #str
+          return true
+        end
+      end
+    local match_regexp
+    do
+      local str_find = string.find
+      match_regexp =
+        function(me, pattern)
+          local start, finish, capture = str_find(me[1], pattern, me[2])
+          if start then
+            set_position(me, finish + 1)
+            capture = capture or str_sub(me[1], start, finish)
+            return capture
+          end
+        end
+    end
     local overrides =
       {
-        init = request('init'),
-        get_position = request('get_position'),
-        set_position = request('set_position'),
-        read = request('read'),
-        get_length = request('get_length'),
-        match_string = request('match_string'),
-        match_regexp = request('match_regexp'),
-        s = nil,
-        position = nil,
-        original_init = original_init,
+        init = init,
+        get_length = get_length,
+        get_position = get_position,
+        set_position = set_position,
+        read = read,
+        match_string = match_string,
+        match_regexp = match_regexp,
       }
+    local base_interface = request('^.interface')
+    local force_merge = request('!.table.merge_and_patch')
     local interface = new(base_interface)
     force_merge(interface, overrides)
     return interface
   end
-package.preload['workshop.mechs.streams.mergeable.string.match_regexp'] =
-  function(...)
-    return
-      function(self, pattern)
-        local start, finish, capture =
-          self.s:find(pattern, self:get_position())
-        if start then
-          self:set_position(finish + 1)
-          capture = capture or self.s:sub(start, finish)
-          return capture
-        end
-      end
-  end
-package.preload['workshop.mechs.streams.mergeable.string.match_string'] =
-  function(...)
-    return
-      function(self, str)
-        local segment =
-          self.s:sub(self.position, self.position + #str - 1)
-        if (segment == str) then
-          self.position = self.position + #str
-          return true
-        end
-      end
-  end
-package.preload['workshop.mechs.streams.mergeable.string.read'] =
-  function(...)
-    return
-      function(self, num_positions)
-        local result =
-          self.s:sub(self.position, self.position + num_positions - 1)
-        local num_read = #result
-        self:set_relative_position(num_read)
-        return result, num_read
-      end
-  end
-package.preload['workshop.mechs.streams.mergeable.string.set_position'] =
-  function(...)
-    return
-      function(self, new_position)
-        if (new_position == self.position) then
-          return
-        end
-        if (new_position < 1) then
-          new_position = 1
-        elseif (new_position > #self.s + 1) then
-          new_position = #self.s + 1
-        end
-        self.position = new_position
-      end
-  end
-package.preload['workshop.mechs.streams.sequence.get_position'] =
-  function(...)
-    return
-      function(self)
-        return self.position
-      end
-  end
-package.preload['workshop.mechs.streams.sequence.init'] =
-  function(...)
-    return
-      function(self, seq)
-        assert_table(seq)
-        self.seq = seq
-        self.position = 1
-      end
-  end
 package.preload['workshop.mechs.streams.sequence.interface'] =
   function(...)
+    local init =
+      function(me)
+        me[1] = { }
+        me[2] = 1
+      end
+    local get_position =
+      function(me)
+        return me[2]
+      end
+    local set_position
+    do
+      local constrain = request('!.number.constrain')
+      set_position =
+        function(me, new_position)
+          local pos = me[2]
+          if (new_position == pos) then
+            return
+          end
+          new_position = constrain(new_position, 1, pos)
+          for i = new_position, pos - 1 do
+            me[1][i] = nil
+          end
+          me[2] = new_position
+        end
+    end
+    local write =
+      function(me, value)
+        me[1][me[2]] = value
+        me[2] = me[2] + 1
+      end
+    local get_values =
+      function(me)
+        return me[1]
+      end
     return
       {
-        init = request('init'),
-        get_position = request('get_position'),
-        set_position = request('set_position'),
-        read = request('read'),
-        write = request('write'),
-        seq = nil,
-        position = nil,
+        init = init,
+        get_position = get_position,
+        set_position = set_position,
+        write = write,
+        get_values = get_values,
       }
-  end
-package.preload['workshop.mechs.streams.sequence.read'] =
-  function(...)
-    return
-      function(self)
-        local result = self.seq[self.position]
-        self:set_position(self.position + 1)
-        return result
-      end
-  end
-package.preload['workshop.mechs.streams.sequence.set_position'] =
-  function(...)
-    return
-      function(self, new_position)
-        if (new_position == self.position) then
-          return
-        end
-        if (new_position < 1) then
-          new_position = 1
-        end
-        if (new_position > self.position) then
-          new_position = self.position
-        end
-        for i = new_position, self.position do
-          self.seq[i] = nil
-        end
-        self.position = new_position
-      end
-  end
-package.preload['workshop.mechs.streams.sequence.write'] =
-  function(...)
-    return
-      function(self, value)
-        self.seq[self.position] = value
-        self.position = self.position + 1
-      end
   end
 package.preload['workshop.number.constrain'] =
   function(...)
